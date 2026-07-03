@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home Screen</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* --- Khởi tạo cơ bản --- */
+* {
+    margin: 0;
+    padding: 0;
+    box-box-sizing: border-box;
+    font-family: 'Inter', sans-serif;
+    -webkit-tap-highlight-color: transparent;
+}
+
+body {
+    background-color: #e2e8f0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+}
+
+/* --- Khung điện thoại giả lập --- */
+.phone-container {
+    width: 100%;
+    max-width: 412px; /* Kích thước chuẩn các dòng điện thoại */
+    height: 880px;
+    background-color: #F8FAFC; /* Màu nền của Scaffold */
+    border-radius: 32px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+    border: 8px solid #1e293b; /* Viền điện thoại màu tối */
+}
+
+/* --- HEADER --- */
+.header {
+    background-color: #ffffff;
+    padding: 50px 20px 16px 20px; /* Thêm padding top giống SafeArea */
+    border-bottom-left-radius: 24px;
+    border-bottom-right-radius: 24px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+    display: flex;
+    align-items: center;
+    z-index: 10;
+}
+
+.avatar-container {
+    padding: 2px;
+    background: linear-gradient(135deg, #6366F1, #8B5CF6);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.avatar {
+    width: 50px;
+    height: 50px;
+    background-color: #E5E7EB;
+    border-radius: 50%;
+    color: #6366F1;
+    font-weight: bold;
+    font-size: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.user-info {
+    flex: 1;
+    margin-left: 14px;
+}
+
+.greeting {
+    font-size: 11px;
+    color: #6B7280;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+}
+
+.sun-icon {
+    font-size: 14px !important;
+    color: #F59E0B;
+    margin-right: 6px;
+}
+
+.username {
+    font-size: 18px;
+    font-weight: 700;
+    color: #1F2937;
+    margin-top: 2px;
+}
+
+.notification-box {
+    width: 44px;
+    height: 44px;
+    background-color: #F3F4F6;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    cursor: pointer;
+    color: #1F2937;
+}
+
+/* Thẻ số thông báo/số lượng dự án */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: bold;
+    color: #ffffff;
+    border-radius: 12px;
+}
+
+.red-badge {
+    width: 18px;
+    height: 18px;
+    background-color: #EF4444;
+    position: absolute;
+    top: 6px;
+    right: 6px;
+}
+
+/* --- PHẦN CUỘN NỘI DUNG CHÍNH --- */
+.main-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+    /* Ẩn thanh cuộn để mượt như mobile */
+    scrollbar-width: none; 
+}
+.main-content::-webkit-scrollbar {
+    display: none;
+}
+
+/* --- THÔNG TIN NHANH (STAT CARD) --- */
+.stat-card {
+    background: linear-gradient(135deg, #6366F1, #8B5CF6, #A78BFA);
+    border-radius: 20px;
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 8px 15px rgba(99, 102, 241, 0.3);
+    margin-bottom: 24px;
+}
+
+.stat-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.stat-value-row {
+    display: flex;
+    align-items: center;
+    color: #ffffff;
+}
+
+.stat-value-row .material-icons-round {
+    font-size: 20px;
+    margin-right: 8px;
+}
+
+.stat-number {
+    font-size: 24px;
+    font-weight: 700;
+}
+
+.stat-label {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.9);
+    margin-top: 4px;
+    font-weight: 400;
+    text-align: center;
+}
+
+.stat-card .divider {
+    width: 1px;
+    height: 50px;
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* --- TIÊU ĐỀ SECTION --- */
+.section-container {
+    margin-bottom: 24px;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.section-title-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.section-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: #1F2937;
+}
+
+.indigo-badge {
+    padding: 2px 8px;
+    background-color: #6366F1;
+}
+
+.amber-badge {
+    padding: 2px 8px;
+    background-color: #F59E0B;
+}
+
+.see-all {
+    color: #6366F1;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+/* --- DANH SÁCH DỰ ÁN (CUỘN NGANG) --- */
+.project-list {
+    display: flex;
+    overflow-x: auto;
+    gap: 12px;
+    padding-bottom: 8px;
+    scrollbar-width: none;
+}
+.project-list::-webkit-scrollbar {
+    display: none;
+}
+
+.project-card {
+    min-width: 180px;
+    width: 180px;
+    background-color: #ffffff;
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.04);
+    display: flex;
+    flex-direction: column;
+    height: 140px;
+}
+
+.project-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.project-icon-box {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.project-icon-box .material-icons-round {
+    font-size: 18px;
+}
+
+.project-name {
+    font-weight: 600;
+    font-size: 14px;
+    color: #1F2937;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.project-desc {
+    font-size: 11px;
+    color: #6B7280;
+    margin-top: auto;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.progress-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.progress-bar-bg {
+    flex: 1;
+    height: 6px;
+    background-color: #F3F4F6;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    border-radius: 6px;
+}
+
+.progress-text {
+    font-size: 11px;
+    color: #6B7280;
+    font-weight: 600;
+}
+
+/* --- DANH SÁCH NHIỆM VỤ (CUỘN DỌC) --- */
+.task-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.task-card {
+    background-color: #ffffff;
+    border-radius: 14px;
+    padding: 14px;
+    display: flex;
+    align-items: center;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.04);
+}
+
+.task-status-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.task-status-icon .material-icons-round {
+    font-size: 22px;
+}
+
+.task-status-icon.current {
+    background-color: rgba(16, 185, 129, 0.1);
+    color: #10B981;
+}
+
+.task-status-icon.overdue {
+    background-color: rgba(239, 68, 244, 0.1);
+    color: #EF4444;
+}
+
+.task-info {
+    flex: 1;
+    margin-left: 14px;
+    margin-right: 8px;
+    overflow: hidden;
+}
+
+.task-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1F2937;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.task-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.task-project-tag {
+    font-size: 10px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 8px;
+}
+
+.task-date {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: #6B7280;
+}
+
+.task-date .material-icons-round {
+    font-size: 14px;
+}
+
+.overdue-text {
+    color: #EF4444;
+    font-weight: 600;
+}
+
+.task-badge {
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.current-badge {
+    background: linear-gradient(to right, #10B981, #059669);
+    box-shadow: 0 2px 6px rgba(16, 185, 129, 0.3);
+}
+
+.overdue-badge {
+    background: linear-gradient(to right, #EF4444, #DC2626);
+    box-shadow: 0 2px 6px rgba(239, 68, 68, 0.3);
+}
+
+.task-section {
+    padding-bottom: 20px;
+}
+
+/* --- BOTTOM NAVIGATION BAR --- */
+.bottom-nav {
+    background-color: #ffffff;
+    border-top-left-radius: 24px;
+    border-top-right-radius: 24px;
+    padding: 12px 16px;
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05);
+    z-index: 10;
+}
+
+.nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    color: #9CA3AF;
+    cursor: pointer;
+    flex: 1;
+}
+
+.nav-item .material-icons-round {
+    font-size: 24px;
+}
+
+.nav-label {
+    font-size: 11px;
+    margin-top: 4px;
+}
+
+.nav-item.active {
+    color: #6366F1;
+    font-weight: 600;
+}
+    </style>
+</head>
+<body>
+
+    <div class="phone-container">
+        
+        <header class="header">
+            <div class="avatar-container">
+                <div class="avatar">P</div>
+            </div>
+            <div class="user-info">
+                <div class="greeting">
+                    <span class="material-icons-round sun-icon">wb_sunny</span>
+                    Chúc bạn làm việc hiệu quả!
+                </div>
+                <h1 class="username">👋 Phạm Hồng Quý</h1>
+            </div>
+            <div class="notification-box">
+                <span class="material-icons-round">notifications_none</span>
+                <span class="badge red-badge">3</span>
+            </div>
+        </header>
+
+        <main class="main-content">
+            
+            <section class="stat-card">
+                <div class="stat-item">
+                    <div class="stat-value-row">
+                        <span class="material-icons-round">folder_open</span>
+                        <span class="stat-number">3</span>
+                    </div>
+                    <div class="stat-label">Dự án đã tham gia</div>
+                </div>
+                <div class="divider"></div>
+                <div class="stat-item">
+                    <div class="stat-value-row">
+                        <span class="material-icons-round">pending_actions</span>
+                        <span class="stat-number">4</span>
+                    </div>
+                    <div class="stat-label">Task chưa hoàn thành</div>
+                </div>
+            </section>
+
+            <section class="section-container">
+                <div class="section-header">
+                    <div class="section-title-box">
+                        <h2 class="section-title">📁 Dự án của bạn</h2>
+                        <span class="badge indigo-badge">3</span>
+                    </div>
+                    <a href="#" class="see-all">Xem tất cả →</a>
+                </div>
+                
+                <div class="project-list">
+                    <div class="project-card">
+                        <div class="project-header">
+                            <div class="project-icon-box" style="background: rgba(99, 102, 241, 0.1); color: #6366F1;">
+                                <span class="material-icons-round">phone_android</span>
+                            </div>
+                            <span class="project-name">App di động</span>
+                        </div>
+                        <div class="project-desc">Phát triển ứng dụng Flutter</div>
+                        <div class="progress-container">
+                            <div class="progress-bar-bg">
+                                <div class="progress-bar-fill" style="width: 60%; background: #6366F1;"></div>
+                            </div>
+                            <span class="progress-text">60%</span>
+                        </div>
+                    </div>
+                    <div class="project-card">
+                        <div class="project-header">
+                            <div class="project-icon-box" style="background: rgba(236, 72, 153, 0.1); color: #EC4899;">
+                                <span class="material-icons-round">shopping_cart</span>
+                            </div>
+                            <span class="project-name">Website bán hàng</span>
+                        </div>
+                        <div class="project-desc">E-commerce platform</div>
+                        <div class="progress-container">
+                            <div class="progress-bar-bg">
+                                <div class="progress-bar-fill" style="width: 38%; background: #EC4899;"></div>
+                            </div>
+                            <span class="progress-text">38%</span>
+                        </div>
+                    </div>
+                    <div class="project-card">
+                        <div class="project-header">
+                            <div class="project-icon-box" style="background: rgba(245, 158, 11, 0.1); color: #F59E0B;">
+                                <span class="material-icons-round">psychology</span>
+                            </div>
+                            <span class="project-name">Dự án AI</span>
+                        </div>
+                        <div class="project-desc">Machine Learning model</div>
+                        <div class="progress-container">
+                            <div class="progress-bar-bg">
+                                <div class="progress-bar-fill" style="width: 20%; background: #F59E0B;"></div>
+                            </div>
+                            <span class="progress-text">20%</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="section-container task-section">
+                <div class="section-header">
+                    <div class="section-title-box">
+                        <h2 class="section-title">📋 Nhiệm vụ của bạn</h2>
+                        <span class="badge amber-badge">3</span>
+                    </div>
+                </div>
+
+                <div class="task-list">
+                    <div class="task-card">
+                        <div class="task-status-icon current">
+                            <span class="material-icons-round">hourglass_top</span>
+                        </div>
+                        <div class="task-info">
+                            <h3 class="task-title">Thiết kế UI cho màn hình chính</h3>
+                            <div class="task-meta">
+                                <span class="task-project-tag" style="background: rgba(99, 102, 241, 0.1); color: #6366F1;">App di động</span>
+                                <div class="task-date">
+                                    <span class="material-icons-round">access_time</span>
+                                    <span>Ngày mai</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="task-badge current-badge">Đang làm</div>
+                    </div>
+
+                    <div class="task-card">
+                        <div class="task-status-icon overdue">
+                            <span class="material-icons-round">warning_amber</span>
+                        </div>
+                        <div class="task-info">
+                            <h3 class="task-title">Xây dựng API cho module thanh toán</h3>
+                            <div class="task-meta">
+                                <span class="task-project-tag" style="background: rgba(236, 72, 153, 0.1); color: #EC4899;">Website bán hàng</span>
+                                <div class="task-date overdue-text">
+                                    <span class="material-icons-round">access_time</span>
+                                    <span>Trễ 2 ngày</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="task-badge overdue-badge">Quá hạn</div>
+                    </div>
+
+                    <div class="task-card">
+                        <div class="task-status-icon current">
+                            <span class="material-icons-round">hourglass_top</span>
+                        </div>
+                        <div class="task-info">
+                            <h3 class="task-title">Training model cho nhận dạng ảnh</h3>
+                            <div class="task-meta">
+                                <span class="task-project-tag" style="background: rgba(245, 158, 11, 0.1); color: #F59E0B;">Dự án AI</span>
+                                <div class="task-date">
+                                    <span class="material-icons-round">access_time</span>
+                                    <span>Còn 5 ngày</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="task-badge current-badge">Đang làm</div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+
+        <nav class="bottom-nav">
+            <div class="nav-item active">
+                <span class="material-icons-round">home</span>
+                <span class="nav-label">Trang chủ</span>
+            </div>
+            <div class="nav-item">
+                <span class="material-icons-round">folder</span>
+                <span class="nav-label">Dự án</span>
+            </div>
+            <div class="nav-item">
+                <span class="material-icons-round">chat</span>
+                <span class="nav-label">Tin nhắn</span>
+            </div>
+            <div class="nav-item">
+                <span class="material-icons-round">person</span>
+                <span class="nav-label">Tôi</span>
+            </div>
+        </nav>
+
+    </div>
+
+</body>
+</html>

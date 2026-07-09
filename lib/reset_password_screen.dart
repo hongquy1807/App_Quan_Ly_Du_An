@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 
+import 'services/auth_service.dart';
+
 class ResetPasswordScreen extends StatefulWidget {
   final String email;
+  final String resetToken;
 
   const ResetPasswordScreen({
     super.key,
     required this.email,
+    required this.resetToken,
   });
 
   @override
@@ -19,6 +23,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   bool _obscureNewPassword = true;
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
+  final _authService = AuthService();
 
   @override
   void dispose() {
@@ -27,31 +32,46 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     super.dispose();
   }
 
-  void _handleResetPassword() {
+  Future<void> _handleResetPassword() async {
     if (_formKey.currentState?.validate() ?? false) {
       setState(() {
         _isLoading = true;
       });
 
-      // Giả lập đặt lại mật khẩu
-      Future.delayed(const Duration(seconds: 2), () {
-        if (!mounted) return;
+      try {
+        await _authService.resetPassword(
+          token: widget.resetToken,
+          newPassword: _newPasswordController.text,
+        );
 
+        if (!mounted) return;
         setState(() {
           _isLoading = false;
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('✅ Đặt lại mật khẩu thành công!'),
+            content: Text('Đặt lại mật khẩu thành công!'),
             backgroundColor: Color(0xFF10B981),
             duration: Duration(seconds: 2),
           ),
         );
 
-        // Quay về màn hình đăng nhập
         Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
-      });
+      } on ApiException catch (err) {
+        if (!mounted) return;
+        setState(() {
+          _isLoading = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(err.message),
+            backgroundColor: const Color(0xFFEF4444),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 
@@ -63,11 +83,14 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF1F2937)),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: Color(0xFF1F2937),
+          ),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
-          'Đặt lại mật khẩu',
+          'Äáº·t láº¡i máº­t kháº©u',
           style: TextStyle(
             color: Color(0xFF1F2937),
             fontWeight: FontWeight.bold,
@@ -107,7 +130,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                 child: Column(
                   children: [
                     Text(
-                      'Tạo mật khẩu mới',
+                      'Táº¡o máº­t kháº©u má»›i',
                       style: const TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
@@ -116,7 +139,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Cho tài khoản ${widget.email}',
+                      'Cho tĂ i khoáº£n ${widget.email}',
                       style: const TextStyle(
                         fontSize: 14,
                         color: Color(0xFF6B7280),
@@ -135,7 +158,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                   children: [
                     // New Password
                     const Text(
-                      'Mật khẩu mới',
+                      'Máº­t kháº©u má»›i',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
@@ -151,7 +174,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                         color: Color(0xFF1F2937),
                       ),
                       decoration: InputDecoration(
-                        hintText: '••••••••',
+                        hintText: 'â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢',
                         hintStyle: const TextStyle(
                           color: Color(0xFF9CA3AF),
                           fontSize: 14,
@@ -205,13 +228,15 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                       ),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return 'Vui lòng nhập mật khẩu mới';
+                          return 'Vui lĂ²ng nháº­p máº­t kháº©u má»›i';
                         }
                         if (value.length < 6) {
-                          return 'Mật khẩu phải có ít nhất 6 ký tự';
+                          return 'Máº­t kháº©u pháº£i cĂ³ Ă­t nháº¥t 6 kĂ½ tá»±';
                         }
-                        if (!RegExp(r'^(?=.*[A-Za-z])(?=.*\d)').hasMatch(value)) {
-                          return 'Mật khẩu phải có ít nhất 1 chữ và 1 số';
+                        if (!RegExp(
+                          r'^(?=.*[A-Za-z])(?=.*\d)',
+                        ).hasMatch(value)) {
+                          return 'Máº­t kháº©u pháº£i cĂ³ Ă­t nháº¥t 1 chá»¯ vĂ  1 sá»‘';
                         }
                         return null;
                       },
@@ -220,7 +245,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
                     // Confirm Password
                     const Text(
-                      'Xác nhận mật khẩu',
+                      'XĂ¡c nháº­n máº­t kháº©u',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
@@ -236,7 +261,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                         color: Color(0xFF1F2937),
                       ),
                       decoration: InputDecoration(
-                        hintText: '••••••••',
+                        hintText: 'â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢',
                         hintStyle: const TextStyle(
                           color: Color(0xFF9CA3AF),
                           fontSize: 14,
@@ -257,7 +282,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                           onPressed: () {
                             setState(() {
                               _obscureConfirmPassword =
-                              !_obscureConfirmPassword;
+                                  !_obscureConfirmPassword;
                             });
                           },
                         ),
@@ -291,10 +316,10 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                       ),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return 'Vui lòng xác nhận mật khẩu';
+                          return 'Vui lĂ²ng xĂ¡c nháº­n máº­t kháº©u';
                         }
                         if (value != _newPasswordController.text) {
-                          return 'Mật khẩu không khớp';
+                          return 'Máº­t kháº©u khĂ´ng khá»›p';
                         }
                         return null;
                       },
@@ -314,50 +339,48 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
                           ),
-                          disabledBackgroundColor: const Color(0xFF6366F1)
-                              .withValues(alpha: 0.6),
+                          disabledBackgroundColor: const Color(
+                            0xFF6366F1,
+                          ).withValues(alpha: 0.6),
                         ),
                         child: _isLoading
                             ? const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.white,
-                                ),
-                              ),
-                            ),
-                            SizedBox(width: 12),
-                            Text(
-                              'Đang xử lý...',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        )
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.5,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(width: 12),
+                                  Text(
+                                    'Äang xá»­ lĂ½...',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              )
                             : const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.check_circle_rounded,
-                              size: 20,
-                            ),
-                            SizedBox(width: 8),
-                            Text(
-                              'Đặt lại mật khẩu',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.check_circle_rounded, size: 20),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Äáº·t láº¡i máº­t kháº©u',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
-                          ],
-                        ),
                       ),
                     ),
                     const SizedBox(height: 20),

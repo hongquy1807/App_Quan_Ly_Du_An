@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -15,6 +15,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
   bool _rememberMe = false;
   bool _isLoading = false;
+  final _authService = AuthService();
 
   @override
   void dispose() {
@@ -23,34 +24,46 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _handleLogin() {
-    // Sửa lỗi 1: Dùng ?? false thay vì ! để tránh lỗi Null Check
+  Future<void> _handleLogin() async {
     if (_formKey.currentState?.validate() ?? false) {
       setState(() {
         _isLoading = true;
       });
 
-      // Giả lập đăng nhập
-      Future.delayed(const Duration(seconds: 2), () {
-        // Kiểm tra xem widget còn tồn tại trên cây giao diện không trước khi update UI
-        if (!mounted) return;
+      try {
+        await _authService.login(
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
+        );
 
+        if (!mounted) return;
         setState(() {
           _isLoading = false;
         });
 
-        // Sửa lỗi 2: Phải hiện SnackBar TRƯỚC khi gỡ màn hình Login (pushReplacementNamed)
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Đăng nhập thành công! 🎉'),
+            content: Text('Đăng nhập thành công!'),
             backgroundColor: Color(0xFF10B981),
             duration: Duration(seconds: 2),
           ),
         );
 
-        // Sau đó mới chuyển đến màn hình chính
         Navigator.pushReplacementNamed(context, '/home');
-      });
+      } on ApiException catch (err) {
+        if (!mounted) return;
+        setState(() {
+          _isLoading = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(err.message),
+            backgroundColor: const Color(0xFFEF4444),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 
@@ -96,10 +109,7 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 8),
               const Text(
                 'Đăng nhập để tiếp tục quản lý dự án của bạn',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Color(0xFF6B7280),
-                ),
+                style: TextStyle(fontSize: 14, color: Color(0xFF6B7280)),
               ),
               const SizedBox(height: 40),
 
@@ -176,8 +186,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         if (value == null || value.isEmpty) {
                           return 'Vui lòng nhập email';
                         }
-                        if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
-                            .hasMatch(value)) {
+                        if (!RegExp(
+                          r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+                        ).hasMatch(value)) {
                           return 'Email không hợp lệ';
                         }
                         return null;
@@ -338,8 +349,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             borderRadius: BorderRadius.circular(14),
                           ),
                           // Sửa cảnh báo 4: Chuyển withOpacity thành withValues
-                          disabledBackgroundColor: const Color(0xFF6366F1)
-                              .withValues(alpha: 0.6),
+                          disabledBackgroundColor: const Color(
+                            0xFF6366F1,
+                          ).withValues(alpha: 0.6),
                         ),
                         child: _isLoading
                             ? const Row(
@@ -376,10 +388,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ),
                             SizedBox(width: 8),
-                            Icon(
-                              Icons.arrow_forward_rounded,
-                              size: 20,
-                            ),
+                            Icon(Icons.arrow_forward_rounded, size: 20),
                           ],
                         ),
                       ),
@@ -398,7 +407,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         Padding(
                           padding: EdgeInsets.symmetric(horizontal: 16),
                           child: Text(
-                            'HOẶC',
+                            'HOẶC ĐĂNG NHẬP VỚI',
                             style: TextStyle(
                               color: Color(0xFF9CA3AF),
                               fontSize: 12,
@@ -428,21 +437,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           },
                         ),
                         const SizedBox(width: 16),
-                        _buildSocialButton(
-                          icon: Icons.facebook,
-                          color: const Color(0xFF1877F2),
-                          onTap: () {
-                            // Facebook login
-                          },
-                        ),
-                        const SizedBox(width: 16),
-                        _buildSocialButton(
-                          icon: Icons.apple,
-                          color: const Color(0xFF1F2937),
-                          onTap: () {
-                            // Apple login
-                          },
-                        ),
                       ],
                     ),
                     const SizedBox(height: 30),
@@ -497,16 +491,9 @@ class _LoginScreenState extends State<LoginScreen> {
         decoration: BoxDecoration(
           color: const Color(0xFFF9FAFB),
           shape: BoxShape.circle,
-          border: Border.all(
-            color: const Color(0xFFE5E7EB),
-            width: 1.5,
-          ),
+          border: Border.all(color: const Color(0xFFE5E7EB), width: 1.5),
         ),
-        child: Icon(
-          icon,
-          size: 30,
-          color: color,
-        ),
+        child: Icon(icon, size: 30, color: color),
       ),
     );
   }

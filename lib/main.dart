@@ -4,6 +4,7 @@ import 'login_screen.dart';
 import 'register_screen.dart';
 import 'forgot_password_screen.dart';
 import 'reset_password_screen.dart';
+import 'project_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -17,7 +18,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Quản lý dự án',
       theme: ThemeData(
-        primarySwatch: Colors.lightGreen,
+        primarySwatch: Colors.blue,
         useMaterial3: true,
         fontFamily: 'Roboto',
       ),
@@ -27,6 +28,7 @@ class MyApp extends StatelessWidget {
         '/register': (context) => const RegisterScreen(),
         '/forgot-password': (context) => const ForgotPasswordScreen(),
         '/home': (context) => const HomeScreen(),
+        '/projects': (context) => const ProjectScreen(),
       },
       onGenerateRoute: (settings) {
         if (settings.name == '/reset-password') {
@@ -34,6 +36,7 @@ class MyApp extends StatelessWidget {
           return MaterialPageRoute(
             builder: (context) => ResetPasswordScreen(
               email: args['email'] ?? '',
+              resetToken: args['reset_token'] ?? '',
             ),
           );
         }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/gestures.dart'; // <-- Thêm dòng này
+import 'package:flutter/gestures.dart'; // <-- ThĂªm dĂ²ng nĂ y
+import 'services/auth_service.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -19,6 +20,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _obscureConfirmPassword = true;
   bool _agreeTerms = false;
   bool _isLoading = false;
+  final _authService = AuthService();
 
   @override
   void dispose() {
@@ -29,7 +31,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  void _handleRegister() {
+  Future<void> _handleRegister() async {
     if (_formKey.currentState?.validate() ?? false) {
       if (!_agreeTerms) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -46,25 +48,41 @@ class _RegisterScreenState extends State<RegisterScreen> {
         _isLoading = true;
       });
 
-      // Giả lập đăng ký
-      Future.delayed(const Duration(seconds: 2), () {
-        if (!mounted) return;
+      try {
+        await _authService.register(
+          name: _fullNameController.text.trim(),
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
+        );
 
+        if (!mounted) return;
         setState(() {
           _isLoading = false;
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Đăng ký thành công! 🎉 Vui lòng đăng nhập'),
+            content: Text('Đăng ký thành công! Vui lòng đăng nhập'),
             backgroundColor: Color(0xFF10B981),
             duration: Duration(seconds: 2),
           ),
         );
 
-        // Quay lại màn hình đăng nhập
         Navigator.pop(context);
-      });
+      } on ApiException catch (err) {
+        if (!mounted) return;
+        setState(() {
+          _isLoading = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(err.message),
+            backgroundColor: const Color(0xFFEF4444),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 
@@ -100,7 +118,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
               // Header
               const Text(
-                'Tạo tài khoản',
+                'Táº¡o tĂ i khoáº£n',
                 style: TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.bold,
@@ -109,11 +127,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Đăng ký để bắt đầu quản lý dự án của bạn',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Color(0xFF6B7280),
-                ),
+                'ÄÄƒng kĂ½ Ä‘á»ƒ báº¯t Ä‘áº§u quáº£n lĂ½ dá»± Ă¡n cá»§a báº¡n',
+                style: TextStyle(fontSize: 14, color: Color(0xFF6B7280)),
               ),
               const SizedBox(height: 32),
 
@@ -123,9 +138,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Họ và tên
+                    // Há» vĂ  tĂªn
                     const Text(
-                      'Họ và tên',
+                      'Há» vĂ  tĂªn',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
@@ -141,7 +156,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         color: Color(0xFF1F2937),
                       ),
                       decoration: InputDecoration(
-                        hintText: 'Nguyễn Văn A',
+                        hintText: 'Nguyá»…n VÄƒn A',
                         hintStyle: const TextStyle(
                           color: Color(0xFF9CA3AF),
                           fontSize: 14,
@@ -188,10 +203,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return 'Vui lòng nhập họ và tên';
+                          return 'Vui lĂ²ng nháº­p há» vĂ  tĂªn';
                         }
                         if (value.trim().split(' ').length < 2) {
-                          return 'Vui lòng nhập đầy đủ họ và tên';
+                          return 'Vui lĂ²ng nháº­p Ä‘áº§y Ä‘á»§ há» vĂ  tĂªn';
                         }
                         return null;
                       },
@@ -264,11 +279,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return 'Vui lòng nhập email';
+                          return 'Vui lĂ²ng nháº­p email';
                         }
-                        if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
-                            .hasMatch(value)) {
-                          return 'Email không hợp lệ';
+                        if (!RegExp(
+                          r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+                        ).hasMatch(value)) {
+                          return 'Email khĂ´ng há»£p lá»‡';
                         }
                         return null;
                       },
@@ -277,7 +293,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                     // Password
                     const Text(
-                      'Mật khẩu',
+                      'Máº­t kháº©u',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
@@ -294,7 +310,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         color: Color(0xFF1F2937),
                       ),
                       decoration: InputDecoration(
-                        hintText: '••••••••',
+                        hintText: 'â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢',
                         hintStyle: const TextStyle(
                           color: Color(0xFF9CA3AF),
                           fontSize: 14,
@@ -355,23 +371,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return 'Vui lòng nhập mật khẩu';
+                          return 'Vui lĂ²ng nháº­p máº­t kháº©u';
                         }
                         if (value.length < 6) {
-                          return 'Mật khẩu phải có ít nhất 6 ký tự';
+                          return 'Máº­t kháº©u pháº£i cĂ³ Ă­t nháº¥t 6 kĂ½ tá»±';
                         }
-                        if (!RegExp(r'^(?=.*[A-Za-z])(?=.*\d)')
-                            .hasMatch(value)) {
-                          return 'Mật khẩu phải có ít nhất 1 chữ và 1 số';
+                        if (!RegExp(
+                          r'^(?=.*[A-Za-z])(?=.*\d)',
+                        ).hasMatch(value)) {
+                          return 'Máº­t kháº©u pháº£i cĂ³ Ă­t nháº¥t 1 chá»¯ vĂ  1 sá»‘';
                         }
                         return null;
                       },
                     ),
                     const SizedBox(height: 20),
 
-                    // Xác nhận mật khẩu
+                    // XĂ¡c nháº­n máº­t kháº©u
                     const Text(
-                      'Xác nhận mật khẩu',
+                      'XĂ¡c nháº­n máº­t kháº©u',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
@@ -388,7 +405,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         color: Color(0xFF1F2937),
                       ),
                       decoration: InputDecoration(
-                        hintText: '••••••••',
+                        hintText: 'â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢',
                         hintStyle: const TextStyle(
                           color: Color(0xFF9CA3AF),
                           fontSize: 14,
@@ -409,7 +426,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           onPressed: () {
                             setState(() {
                               _obscureConfirmPassword =
-                              !_obscureConfirmPassword;
+                                  !_obscureConfirmPassword;
                             });
                           },
                         ),
@@ -450,17 +467,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return 'Vui lòng xác nhận mật khẩu';
+                          return 'Vui lĂ²ng xĂ¡c nháº­n máº­t kháº©u';
                         }
                         if (value != _passwordController.text) {
-                          return 'Mật khẩu không khớp';
+                          return 'Máº­t kháº©u khĂ´ng khá»›p';
                         }
                         return null;
                       },
                     ),
                     const SizedBox(height: 16),
 
-                    // Điều khoản
+                    // Äiá»u khoáº£n
                     Row(
                       children: [
                         SizedBox(
@@ -488,40 +505,44 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 color: Color(0xFF6B7280),
                               ),
                               children: [
-                                const TextSpan(
-                                  text: 'Tôi đồng ý với ',
-                                ),
+                                const TextSpan(text: 'TĂ´i Ä‘á»“ng Ă½ vá»›i '),
                                 TextSpan(
-                                  text: 'Điều khoản sử dụng',
+                                  text: 'Äiá»u khoáº£n sá»­ dá»¥ng',
                                   style: const TextStyle(
                                     color: Color(0xFF6366F1),
                                     fontWeight: FontWeight.w600,
                                   ),
                                   recognizer: TapGestureRecognizer()
                                     ..onTap = () {
-                                      // Mở điều khoản
-                                      ScaffoldMessenger.of(context).showSnackBar(
+                                      // Má»Ÿ Ä‘iá»u khoáº£n
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
                                         const SnackBar(
-                                          content: Text('Mở điều khoản sử dụng'),
+                                          content: Text(
+                                            'Má»Ÿ Ä‘iá»u khoáº£n sá»­ dá»¥ng',
+                                          ),
                                         ),
                                       );
                                     },
                                 ),
-                                const TextSpan(
-                                  text: ' và ',
-                                ),
+                                const TextSpan(text: ' vĂ  '),
                                 TextSpan(
-                                  text: 'Chính sách bảo mật',
+                                  text: 'ChĂ­nh sĂ¡ch báº£o máº­t',
                                   style: const TextStyle(
                                     color: Color(0xFF6366F1),
                                     fontWeight: FontWeight.w600,
                                   ),
                                   recognizer: TapGestureRecognizer()
                                     ..onTap = () {
-                                      // Mở chính sách bảo mật
-                                      ScaffoldMessenger.of(context).showSnackBar(
+                                      // Má»Ÿ chĂ­nh sĂ¡ch báº£o máº­t
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
                                         const SnackBar(
-                                          content: Text('Mở chính sách bảo mật'),
+                                          content: Text(
+                                            'Má»Ÿ chĂ­nh sĂ¡ch báº£o máº­t',
+                                          ),
                                         ),
                                       );
                                     },
@@ -547,50 +568,48 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
                           ),
-                          disabledBackgroundColor: const Color(0xFF6366F1)
-                              .withValues(alpha: 0.6),
+                          disabledBackgroundColor: const Color(
+                            0xFF6366F1,
+                          ).withValues(alpha: 0.6),
                         ),
                         child: _isLoading
                             ? const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.white,
-                                ),
-                              ),
-                            ),
-                            SizedBox(width: 12),
-                            Text(
-                              'Đang đăng ký...',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        )
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.5,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(width: 12),
+                                  Text(
+                                    'Äang Ä‘Äƒng kĂ½...',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              )
                             : const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              'Đăng ký',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    'ÄÄƒng kĂ½',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  SizedBox(width: 8),
+                                  Icon(Icons.arrow_forward_rounded, size: 20),
+                                ],
                               ),
-                            ),
-                            SizedBox(width: 8),
-                            Icon(
-                              Icons.arrow_forward_rounded,
-                              size: 20,
-                            ),
-                          ],
-                        ),
                       ),
                     ),
                     const SizedBox(height: 20),
@@ -607,7 +626,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         Padding(
                           padding: EdgeInsets.symmetric(horizontal: 16),
                           child: Text(
-                            'HOẶC',
+                            'HOáº¶C',
                             style: TextStyle(
                               color: Color(0xFF9CA3AF),
                               fontSize: 12,
@@ -633,7 +652,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           icon: Icons.g_mobiledata,
                           color: const Color(0xFFEA4335),
                           onTap: () {
-                            // Đăng ký với Google
+                            // ÄÄƒng kĂ½ vá»›i Google
                           },
                         ),
                         const SizedBox(width: 16),
@@ -641,7 +660,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           icon: Icons.facebook,
                           color: const Color(0xFF1877F2),
                           onTap: () {
-                            // Đăng ký với Facebook
+                            // ÄÄƒng kĂ½ vá»›i Facebook
                           },
                         ),
                         const SizedBox(width: 16),
@@ -649,7 +668,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           icon: Icons.apple,
                           color: const Color(0xFF1F2937),
                           onTap: () {
-                            // Đăng ký với Apple
+                            // ÄÄƒng kĂ½ vá»›i Apple
                           },
                         ),
                       ],
@@ -661,7 +680,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         const Text(
-                          'Đã có tài khoản? ',
+                          'ÄĂ£ cĂ³ tĂ i khoáº£n? ',
                           style: TextStyle(
                             fontSize: 14,
                             color: Color(0xFF6B7280),
@@ -672,7 +691,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             Navigator.pop(context);
                           },
                           child: const Text(
-                            'Đăng nhập',
+                            'ÄÄƒng nháº­p',
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w700,
@@ -706,16 +725,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
         decoration: BoxDecoration(
           color: const Color(0xFFF9FAFB),
           shape: BoxShape.circle,
-          border: Border.all(
-            color: const Color(0xFFE5E7EB),
-            width: 1.5,
-          ),
+          border: Border.all(color: const Color(0xFFE5E7EB), width: 1.5),
         ),
-        child: Icon(
-          icon,
-          size: 30,
-          color: color,
-        ),
+        child: Icon(icon, size: 30, color: color),
       ),
     );
   }

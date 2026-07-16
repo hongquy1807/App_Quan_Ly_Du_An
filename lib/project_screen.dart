@@ -1,5 +1,6 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'project_detail_screen.dart';
+import 'utils/color_utils.dart';
 
 class ProjectScreen extends StatefulWidget {
   const ProjectScreen({super.key});
@@ -11,7 +12,25 @@ class ProjectScreen extends StatefulWidget {
 class _ProjectScreenState extends State<ProjectScreen> {
   // Biến sắp xếp
   bool _isAscending = true;
-  int _currentIndex = 1;
+  int _currentIndex = 2;
+
+  final List<Map<String, String>> _projectInvitations = [
+    {
+      'projectName': 'Dashboard quản lý',
+      'inviterName': 'Trần Thị B',
+      'inviterEmail': 'tranthib@email.com',
+    },
+    {
+      'projectName': 'Ứng dụng đặt lịch',
+      'inviterName': 'Lê Văn C',
+      'inviterEmail': 'levanc@email.com',
+    },
+    {
+      'projectName': 'Hệ thống báo cáo',
+      'inviterName': 'Phạm Thị D',
+      'inviterEmail': 'phamthid@email.com',
+    },
+  ];
 
   // Danh sách dự án
   final List<Map<String, dynamic>> _projects = [
@@ -72,7 +91,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
     },
   ];
 
-  // Hàm thêm dự án mới
+  // HĂ m thĂªm dá»± Ă¡n má»›i
   void _addProject(Map<String, dynamic> newProject) {
     setState(() {
       _projects.add(newProject);
@@ -80,14 +99,12 @@ class _ProjectScreenState extends State<ProjectScreen> {
     });
   }
 
-  // Hàm xóa dự án
+  // HĂ m xĂ³a dá»± Ă¡n
   void _deleteProject(String id) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text(
           'Xóa dự án',
           style: TextStyle(
@@ -115,7 +132,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('🗑️ Đã xóa dự án thành công'),
+                  content: Text('Đã xóa dự án thành công'),
                   backgroundColor: Color(0xFFEF4444),
                 ),
               );
@@ -130,7 +147,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
     );
   }
 
-  // Hàm sắp xếp dự án
+  // HĂ m sáº¯p xáº¿p dá»± Ă¡n
   void _sortProjects() {
     _projects.sort((a, b) {
       final nameA = a['name'].toLowerCase();
@@ -139,7 +156,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
     });
   }
 
-  // Hàm hiển thị dialog tạo dự án
+  // HĂ m hiá»ƒn thá»‹ dialog táº¡o dá»± Ă¡n
   void _showCreateProjectDialog() {
     final formKey = GlobalKey<FormState>();
     final nameController = TextEditingController();
@@ -174,7 +191,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
             ),
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
-                child: Form(
+              child: Form(
                 key: formKey,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -204,14 +221,11 @@ class _ProjectScreenState extends State<ProjectScreen> {
                     const SizedBox(height: 8),
                     const Text(
                       'Điền thông tin để tạo dự án mới',
-                      style: TextStyle(
-                        color: Color(0xFF6B7280),
-                        fontSize: 14,
-                      ),
+                      style: TextStyle(color: Color(0xFF6B7280), fontSize: 14),
                     ),
                     const SizedBox(height: 24),
 
-                    // Tên dự án
+                    // TĂªn dá»± Ă¡n
                     const Text(
                       'Tên dự án',
                       style: TextStyle(
@@ -273,7 +287,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    // Mô tả
+                    // MĂ´ táº£
                     const Text(
                       'Mô tả',
                       style: TextStyle(
@@ -333,7 +347,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    // Chọn màu
+                    // Chá»n mĂ u
                     const Text(
                       'Màu sắc',
                       style: TextStyle(
@@ -384,20 +398,31 @@ class _ProjectScreenState extends State<ProjectScreen> {
                     ),
                     const SizedBox(height: 24),
 
-                    // Button tạo
+                    // Button táº¡o
                     SizedBox(
                       width: double.infinity,
                       height: 54,
                       child: ElevatedButton(
-                            onPressed: () {
+                        onPressed: () {
                           if (formKey.currentState?.validate() ?? false) {
                             final colorObj = colors[selectedColorIndex];
-                            final rVal = (colorObj.r * 255).round().clamp(0, 255);
-                            final gVal = (colorObj.g * 255).round().clamp(0, 255);
-                            final bVal = (colorObj.b * 255).round().clamp(0, 255);
-                            final colorHex = '${rVal.toRadixString(16).padLeft(2, '0')}${gVal.toRadixString(16).padLeft(2, '0')}${bVal.toRadixString(16).padLeft(2, '0')}';
+                            final rVal = (colorObj.r * 255).round().clamp(
+                              0,
+                              255,
+                            );
+                            final gVal = (colorObj.g * 255).round().clamp(
+                              0,
+                              255,
+                            );
+                            final bVal = (colorObj.b * 255).round().clamp(
+                              0,
+                              255,
+                            );
+                            final colorHex =
+                                '${rVal.toRadixString(16).padLeft(2, '0')}${gVal.toRadixString(16).padLeft(2, '0')}${bVal.toRadixString(16).padLeft(2, '0')}';
                             final newProject = {
-                              'id': DateTime.now().millisecondsSinceEpoch.toString(),
+                              'id': DateTime.now().millisecondsSinceEpoch
+                                  .toString(),
                               'name': nameController.text.trim(),
                               'description': descriptionController.text.trim(),
                               'color': '#$colorHex',
@@ -413,7 +438,9 @@ class _ProjectScreenState extends State<ProjectScreen> {
 
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text('✅ Đã tạo dự án "${nameController.text}" thành công!'),
+                                content: Text(
+                                  'Đã tạo dự án "${nameController.text}" thành công!',
+                                ),
                                 backgroundColor: const Color(0xFF10B981),
                                 duration: const Duration(seconds: 2),
                               ),
@@ -488,91 +515,28 @@ class _ProjectScreenState extends State<ProjectScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '📁 Dự án',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF1F2937),
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            'Quản lý tất cả dự án của bạn',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Color(0xFF6B7280),
-                            ),
-                          ),
-                        ],
-                      ),
-                      Row(
-                        children: [
-                          // Nút sắp xếp
-                          Container(
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF3F4F6),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  _isAscending = !_isAscending;
-                                  _sortProjects();
-                                });
-                              },
-                              icon: Icon(
-                                _isAscending
-                                    ? Icons.sort_by_alpha
-                                    : Icons.sort_by_alpha_outlined,
-                                color: const Color(0xFF6366F1),
-                                size: 24,
-                              ),
-                              tooltip: _isAscending ? 'A → Z' : 'Z → A',
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          // Nút tạo dự án
-                          Container(
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                              ),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: IconButton(
-                              onPressed: _showCreateProjectDialog,
-                              icon: const Icon(
-                                Icons.add_rounded,
-                                color: Colors.white,
-                                size: 24,
-                              ),
-                              tooltip: 'Tạo dự án mới',
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                  const Text(
+                    'Dự án',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF1F2937),
+                    ),
                   ),
-                  const SizedBox(height: 12),
-                  // Thống kê nhanh
-                  _buildStatChip(
-                    icon: Icons.folder_open_rounded,
-                    label: 'Tổng dự án',
-                    value: _projects.length.toString(),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Quản lý tất cả dự án của bạn',
+                    style: TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 16),
 
-            // Danh sách dự án
+            _buildBodyActions(),
+            const SizedBox(height: 16),
+
+            // Danh sĂ¡ch dá»± Ă¡n
             Expanded(
               child: _projects.isEmpty
                   ? Center(
@@ -582,7 +546,9 @@ class _ProjectScreenState extends State<ProjectScreen> {
                           Icon(
                             Icons.folder_open_rounded,
                             size: 80,
-                            color: const Color(0xFF6B7280).withValues(alpha: 0.3),
+                            color: const Color(
+                              0xFF6B7280,
+                            ).withValues(alpha: 0.3),
                           ),
                           const SizedBox(height: 16),
                           const Text(
@@ -605,7 +571,10 @@ class _ProjectScreenState extends State<ProjectScreen> {
                       ),
                     )
                   : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 8,
+                      ),
                       itemCount: _projects.length,
                       itemBuilder: (context, index) {
                         final project = _projects[index];
@@ -643,17 +612,18 @@ class _ProjectScreenState extends State<ProjectScreen> {
                 Navigator.pushReplacementNamed(context, '/home');
                 break;
               case 1:
-                Navigator.pushReplacementNamed(context, '/projects');
+                Navigator.pushReplacementNamed(context, '/timeline');
                 break;
               case 2:
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('📩 Tin nhắn')),
-                );
+                Navigator.pushReplacementNamed(context, '/projects');
                 break;
               case 3:
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('👤 Profile')),
-                );
+                Navigator.pushReplacementNamed(context, '/chat');
+                break;
+              case 4:
+
+                Navigator.pushReplacementNamed(context, '/profile');
+
                 break;
             }
           },
@@ -670,6 +640,11 @@ class _ProjectScreenState extends State<ProjectScreen> {
               icon: Icon(Icons.home_rounded),
               activeIcon: Icon(Icons.home_rounded),
               label: 'Trang chủ',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.calendar_month_rounded),
+              activeIcon: Icon(Icons.calendar_month_rounded),
+              label: 'Lịch',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.folder_rounded),
@@ -692,39 +667,313 @@ class _ProjectScreenState extends State<ProjectScreen> {
     );
   }
 
-  Widget _buildStatChip({
-    required IconData icon,
-    required String label,
-    required String value,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF3F4F6),
-        borderRadius: BorderRadius.circular(20),
-      ),
+  Widget _buildBodyActions() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
         children: [
-          Icon(icon, size: 14, color: const Color(0xFF6366F1)),
-          const SizedBox(width: 4),
-          Text(
-            '$value $label',
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: Color(0xFF4B5563),
-            ),
+          _buildActionTile(
+            icon: Icons.folder_open_rounded,
+            title: _projects.length.toString(),
+            subtitle: 'Tổng dự án',
+            onTap: () {},
+            emphasizeTitle: true,
+          ),
+          const SizedBox(width: 8),
+          _buildActionTile(
+            icon: Icons.person_add_alt_1_rounded,
+            title: '',
+            subtitle: 'Lời mời',
+            onTap: _showProjectInvitationsDialog,
+          ),
+          const SizedBox(width: 8),
+          _buildActionTile(
+            icon: Icons.add_rounded,
+            title: '',
+            subtitle: 'Thêm dự án',
+            onTap: () {},
+          ),
+          const SizedBox(width: 8),
+          _buildActionTile(
+            icon: _isAscending
+                ? Icons.arrow_upward_rounded
+                : Icons.arrow_downward_rounded,
+            title: '',
+            subtitle: 'Sắp xếp',
+            onTap: () {
+              setState(() {
+                _isAscending = !_isAscending;
+                _sortProjects();
+              });
+            },
           ),
         ],
       ),
     );
   }
 
+  Widget _buildActionTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+    bool emphasizeTitle = false,
+  }) {
+    return Expanded(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Container(
+          height: 82,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withValues(alpha: 0.06),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (title.isNotEmpty)
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: emphasizeTitle ? 22 : 16,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF6366F1),
+                  ),
+                )
+              else
+                Icon(icon, color: const Color(0xFF6366F1), size: 24),
+              const SizedBox(height: 6),
+              Text(
+                subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF6B7280),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showProjectInvitationsDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 420, maxHeight: 560),
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(22),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF6366F1).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(
+                      Icons.person_add_alt_1_rounded,
+                      color: Color(0xFF6366F1),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Lời mời tham gia',
+                          style: TextStyle(
+                            fontSize: 19,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1F2937),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded),
+                    color: const Color(0xFF6B7280),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Flexible(
+                child: _projectInvitations.isEmpty
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 36),
+                          child: Text(
+                            'Chưa có lời mời mới',
+                            style: TextStyle(color: Color(0xFF6B7280)),
+                          ),
+                        ),
+                      )
+                    : ListView.separated(
+                        shrinkWrap: true,
+                        physics: const BouncingScrollPhysics(),
+                        itemCount: _projectInvitations.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          return _buildInvitationCard(
+                            _projectInvitations[index],
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInvitationCard(Map<String, String> invitation) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withValues(alpha: 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: const Color(0xFF6366F1).withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              Icons.folder_shared_rounded,
+              color: Color(0xFF6366F1),
+              size: 26,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  invitation['projectName'] ?? '',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1F2937),
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  invitation['inviterName'] ?? '',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF4B5563),
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  invitation['inviterEmail'] ?? '',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF6B7280),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Row(
+            children: [
+              _buildInvitationActionButton(
+                icon: Icons.close_rounded,
+                color: const Color(0xFFEF4444),
+                onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Đã từ chối lời mời')),
+                  );
+                },
+              ),
+              const SizedBox(width: 8),
+              _buildInvitationActionButton(
+                icon: Icons.check_rounded,
+                color: const Color(0xFF10B981),
+                onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Đã xác nhận lời mời')),
+                  );
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInvitationActionButton({
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: onTap,
+      child: Container(
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Icon(icon, color: color, size: 20),
+      ),
+    );
+  }
+
   Widget _buildProjectCard(Map<String, dynamic> project) {
-    final progress = project['totalTasks'] > 0
-        ? project['completedTasks'] / project['totalTasks']
-        : 0.0;
-    final color = Color(int.parse('FF${project['color']!.substring(1)}', radix: 16));
+    final color = parseHexColor(project['color']);
 
     return GestureDetector(
       onTap: () {
@@ -760,11 +1009,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
                     color: color.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(
-                    project['icon'],
-                    color: color,
-                    size: 22,
-                  ),
+                  child: Icon(project['icon'], color: color, size: 22),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -806,7 +1051,11 @@ class _ProjectScreenState extends State<ProjectScreen> {
                       value: 'edit',
                       child: Row(
                         children: [
-                          Icon(Icons.edit_rounded, color: Color(0xFF6366F1), size: 20),
+                          Icon(
+                            Icons.edit_rounded,
+                            color: Color(0xFF6366F1),
+                            size: 20,
+                          ),
                           SizedBox(width: 10),
                           Text('Sửa'),
                         ],
@@ -816,7 +1065,11 @@ class _ProjectScreenState extends State<ProjectScreen> {
                       value: 'delete',
                       child: Row(
                         children: [
-                          Icon(Icons.delete_rounded, color: Color(0xFFEF4444), size: 20),
+                          Icon(
+                            Icons.delete_rounded,
+                            color: Color(0xFFEF4444),
+                            size: 20,
+                          ),
                           SizedBox(width: 10),
                           Text('Xóa'),
                         ],
@@ -828,48 +1081,6 @@ class _ProjectScreenState extends State<ProjectScreen> {
                       _deleteProject(project['id']);
                     }
                   },
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Tiến độ',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF6B7280),
-                            ),
-                          ),
-                          Text(
-                            '${(progress * 100).round()}%',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: color,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: LinearProgressIndicator(
-                          value: progress,
-                          backgroundColor: const Color(0xFFF3F4F6),
-                          color: color,
-                          minHeight: 6,
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
               ],
             ),

@@ -118,14 +118,17 @@ class AuthService {
       return data;
     } on ApiException {
       rethrow;
-    } catch (err) {
+    } catch (_) {
       throw ApiException(
         'Không thể kết nối API. Kiểm tra backend đã chạy tại $baseUrl chưa.',
       );
     }
   }
 
-  Future<Map<String, dynamic>> _patch(String path, Map<String, dynamic> body) async {
+  Future<Map<String, dynamic>> _patch(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
     await _ensureTokenLoaded();
     if (_token == null || _token!.isEmpty) {
       throw const ApiException('Bạn cần đăng nhập lại để thực hiện thao tác.');
@@ -159,8 +162,11 @@ class AuthService {
     }
   }
 
-  // Notifications
-  Future<Map<String, dynamic>> getNotifications({int page = 1, int limit = 20, String? read}) async {
+  Future<Map<String, dynamic>> getNotifications({
+    int page = 1,
+    int limit = 20,
+    String? read,
+  }) async {
     final query = StringBuffer('/notifications?page=$page&limit=$limit');
     if (read != null) query.write('&read=$read');
     return _get(query.toString());
@@ -220,7 +226,6 @@ class AuthService {
     }
   }
 
-  // Expose auth headers for other services
   static Future<Map<String, String>> authHeaders() async {
     await _ensureTokenLoaded();
     return {
@@ -229,6 +234,5 @@ class AuthService {
     };
   }
 
-  // Expose token if needed
   static String? get token => _token;
 }

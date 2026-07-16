@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'utils/color_utils.dart';
 import 'task_detail_screen.dart'; // Import trang chi tiết task
 
 class ProjectDetailScreen extends StatefulWidget {
@@ -14,8 +15,8 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
   // Biến sắp xếp
   bool _isAscending = true;
 
-  // Filter: 'my_tasks', 'team_tasks', 'all_tasks', 'my_all_tasks'
-  String _currentFilter = 'my_tasks';
+  // Filter: 'all_tasks', 'in_progress', 'my_tasks', 'completed'
+  String _currentFilter = 'all_tasks';
 
   // Dữ liệu task mẫu
   List<Map<String, dynamic>> _allTasks = [];
@@ -146,28 +147,28 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
 
     switch (_currentFilter) {
       case 'my_tasks':
-        // Task của tôi, chưa hoàn thành
+        // Tất cả task của tôi
         filtered = _allTasks
-            .where((task) => task['assigneeId'] == '1' && !task['isCompleted'])
+            .where((task) => task['assigneeId'] == '1')
             .toList();
         break;
 
-      case 'team_tasks':
-        // Task của đồng đội, chưa hoàn thành
+      case 'in_progress':
+        // Tất cả task đang được thực hiện
         filtered = _allTasks
-            .where((task) => task['assigneeId'] != '1' && !task['isCompleted'])
+            .where((task) => task['status'] == 'Đang làm' && !task['isCompleted'])
             .toList();
         break;
 
       case 'all_tasks':
-        // Tất cả task chưa hoàn thành (của tôi + đồng đội)
-        filtered = _allTasks.where((task) => !task['isCompleted']).toList();
+        // Tất cả task của các thành viên ở mọi trạng thái
+        filtered = List<Map<String, dynamic>>.from(_allTasks);
         break;
 
-      case 'my_all_tasks':
-        // Tất cả task của tôi (đã hoàn thành + chưa hoàn thành)
+      case 'completed':
+        // Tất cả task đã hoàn thành của mọi thành viên
         filtered = _allTasks
-            .where((task) => task['assigneeId'] == '1')
+            .where((task) => task['isCompleted'])
             .toList();
         break;
 
@@ -175,8 +176,16 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
         filtered = [];
     }
 
-    // Sắp xếp theo tên
+    // Sắp xếp theo tên, riêng "Nhiệm vụ của tôi" đưa task hoàn thành xuống cuối.
     filtered.sort((a, b) {
+      if (_currentFilter == 'my_tasks') {
+        final aCompleted = a['isCompleted'] == true;
+        final bCompleted = b['isCompleted'] == true;
+        if (aCompleted != bCompleted) {
+          return aCompleted ? 1 : -1;
+        }
+      }
+
       final nameA = a['title'].toLowerCase();
       final nameB = b['title'].toLowerCase();
       return _isAscending ? nameA.compareTo(nameB) : nameB.compareTo(nameA);
@@ -188,17 +197,15 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
   int _getTaskCount(String filter) {
     switch (filter) {
       case 'my_tasks':
+        return _allTasks.where((t) => t['assigneeId'] == '1').length;
+      case 'in_progress':
         return _allTasks
-            .where((t) => t['assigneeId'] == '1' && !t['isCompleted'])
-            .length;
-      case 'team_tasks':
-        return _allTasks
-            .where((t) => t['assigneeId'] != '1' && !t['isCompleted'])
+            .where((t) => t['status'] == 'Đang làm' && !t['isCompleted'])
             .length;
       case 'all_tasks':
-        return _allTasks.where((t) => !t['isCompleted']).length;
-      case 'my_all_tasks':
-        return _allTasks.where((t) => t['assigneeId'] == '1').length;
+        return _allTasks.length;
+      case 'completed':
+        return _allTasks.where((t) => t['isCompleted']).length;
       default:
         return 0;
     }
@@ -207,9 +214,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final project = widget.project;
-    final color = Color(
-      int.parse('FF${project['color']!.substring(1)}', radix: 16),
-    );
+    final color = parseHexColor(project['color']);
     final filteredTasks = _getFilteredTasks();
     final incompleteTasks = _allTasks.where((t) => !t['isCompleted']).length;
 
@@ -303,20 +308,15 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                         value: _members.length.toString(),
                         color: color,
                       ),
-                      const SizedBox(width: 12),
-                      _buildQuickInfo(
-                        icon: Icons.trending_up_rounded,
-                        label: 'Tiến độ',
-                        value:
-                            '${_allTasks.where((t) => t['isCompleted']).length}/${_allTasks.length}',
-                        color: color,
-                      ),
                     ],
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 16),
+
+            _buildActionButtons(color),
+            const SizedBox(height: 12),
 
             // Filter và Sort
             Container(
@@ -330,20 +330,6 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                       child: Row(
                         children: [
                           _buildFilterChip(
-                            label: 'Của tôi',
-                            value: 'my_tasks',
-                            count: _getTaskCount('my_tasks'),
-                            icon: Icons.person_rounded,
-                          ),
-                          const SizedBox(width: 8),
-                          _buildFilterChip(
-                            label: 'Đồng đội',
-                            value: 'team_tasks',
-                            count: _getTaskCount('team_tasks'),
-                            icon: Icons.people_rounded,
-                          ),
-                          const SizedBox(width: 8),
-                          _buildFilterChip(
                             label: 'Tất cả',
                             value: 'all_tasks',
                             count: _getTaskCount('all_tasks'),
@@ -351,10 +337,24 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                           ),
                           const SizedBox(width: 8),
                           _buildFilterChip(
-                            label: 'Task của tôi',
-                            value: 'my_all_tasks',
-                            count: _getTaskCount('my_all_tasks'),
-                            icon: Icons.folder_rounded,
+                            label: 'Đang tiến hành',
+                            value: 'in_progress',
+                            count: _getTaskCount('in_progress'),
+                            icon: Icons.play_circle_rounded,
+                          ),
+                          const SizedBox(width: 8),
+                          _buildFilterChip(
+                            label: 'Nhiệm vụ của tôi',
+                            value: 'my_tasks',
+                            count: _getTaskCount('my_tasks'),
+                            icon: Icons.person_rounded,
+                          ),
+                          const SizedBox(width: 8),
+                          _buildFilterChip(
+                            label: 'Hoàn thành',
+                            value: 'completed',
+                            count: _getTaskCount('completed'),
+                            icon: Icons.check_circle_rounded,
                           ),
                         ],
                       ),
@@ -486,6 +486,126 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     );
   }
 
+  Widget _buildActionButtons(Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(
+        children: [
+          Expanded(
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.pushNamed(context, '/create-task');
+              },
+              icon: const Icon(Icons.add_task_rounded, size: 18),
+              label: const Text(
+                'Thêm nhiệm vụ',
+                overflow: TextOverflow.ellipsis,
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: color,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () => _showAddMemberSheet(color),
+              icon: Icon(Icons.person_add_rounded, size: 18, color: color),
+              label: Text(
+                'Thêm thành viên',
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: color, fontWeight: FontWeight.w600),
+              ),
+              style: OutlinedButton.styleFrom(
+                backgroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                side: BorderSide(color: color.withValues(alpha: 0.35)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddTaskSheet(Color color) {
+    final titleController = TextEditingController();
+    final descriptionController = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _ProjectActionSheet(
+        title: 'Thêm nhiệm vụ',
+        buttonText: 'Tạo nhiệm vụ',
+        color: color,
+        children: [
+          _ActionTextField(
+            controller: titleController,
+            label: 'Tên nhiệm vụ',
+            hintText: 'Nhập tên nhiệm vụ',
+          ),
+          const SizedBox(height: 12),
+          _ActionTextField(
+            controller: descriptionController,
+            label: 'Mô tả',
+            hintText: 'Nhập mô tả nhiệm vụ',
+            maxLines: 3,
+          ),
+        ],
+        onSubmit: () {
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Đã tạo nhiệm vụ mới')),
+          );
+        },
+      ),
+    ).whenComplete(() {
+      titleController.dispose();
+      descriptionController.dispose();
+    });
+  }
+
+  void _showAddMemberSheet(Color color) {
+    final emailController = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _ProjectActionSheet(
+        title: 'Thêm thành viên',
+        buttonText: 'Gửi lời mời',
+        color: color,
+        children: [
+          _ActionTextField(
+            controller: emailController,
+            label: 'Email thành viên',
+            hintText: 'Nhập email',
+          ),
+        ],
+        onSubmit: () {
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Đã gửi lời mời thành viên')),
+          );
+        },
+      ),
+    ).whenComplete(() {
+      emailController.dispose();
+    });
+  }
+
   Widget _buildFilterChip({
     required String label,
     required String value,
@@ -554,28 +674,14 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     final isCompleted = task['isCompleted'];
     final isMyTask = task['assigneeId'] == '1';
 
-    Color priorityColor;
-    switch (task['priority']) {
-      case 'Cao':
-        priorityColor = const Color(0xFFEF4444);
-        break;
-      case 'Trung bình':
-        priorityColor = const Color(0xFFF59E0B);
-        break;
-      default:
-        priorityColor = const Color(0xFF10B981);
-    }
-
     return GestureDetector(
       onTap: () {
         // Điều hướng đến trang chi tiết task đã tạo riêng
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => TaskDetailScreen(
-              task: task,
-              project: widget.project,
-            ),
+            builder: (context) =>
+                TaskDetailScreen(task: task, project: widget.project),
           ),
         );
       },
@@ -617,45 +723,20 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              task['title'],
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                                color: isCompleted
-                                    ? const Color(0xFF6B7280)
-                                    : const Color(0xFF1F2937),
-                                decoration: isCompleted
-                                    ? TextDecoration.lineThrough
-                                    : null,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          // Priority badge
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: priorityColor.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              task['priority'],
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                color: priorityColor,
-                              ),
-                            ),
-                          ),
-                        ],
+                      Text(
+                        task['title'],
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: isCompleted
+                              ? const Color(0xFF6B7280)
+                              : const Color(0xFF1F2937),
+                          decoration: isCompleted
+                              ? TextDecoration.lineThrough
+                              : null,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 4),
                       Text(
@@ -788,6 +869,119 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProjectActionSheet extends StatelessWidget {
+  final String title;
+  final String buttonText;
+  final Color color;
+  final List<Widget> children;
+  final VoidCallback onSubmit;
+
+  const _ProjectActionSheet({
+    required this.title,
+    required this.buttonText,
+    required this.color,
+    required this.children,
+    required this.onSubmit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1F2937),
+                ),
+              ),
+              const SizedBox(height: 16),
+              ...children,
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: onSubmit,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: color,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Text(
+                    buttonText,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ActionTextField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label;
+  final String hintText;
+  final int maxLines;
+
+  const _ActionTextField({
+    required this.controller,
+    required this.label,
+    required this.hintText,
+    this.maxLines = 1,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      maxLines: maxLines,
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hintText,
+        filled: true,
+        fillColor: const Color(0xFFF9FAFB),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFF6366F1), width: 1.5),
         ),
       ),
     );

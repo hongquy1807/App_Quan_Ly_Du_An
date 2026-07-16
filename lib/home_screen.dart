@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'services/home_service.dart';
 import 'services/auth_service.dart';
+import 'utils/color_utils.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -66,7 +67,8 @@ class _HomeScreenState extends State<HomeScreen> {
             'color': map['color'] ?? '#6366F1',
             'icon': Icons.folder_open_rounded,
             'totalTasks': map['totalTasks'] ?? map['total_tasks'] ?? 0,
-            'completedTasks': map['completedTasks'] ?? map['completed_tasks'] ?? 0,
+            'completedTasks':
+                map['completedTasks'] ?? map['completed_tasks'] ?? 0,
           };
         }).toList();
 
@@ -86,7 +88,8 @@ class _HomeScreenState extends State<HomeScreen> {
             'title': map['title'] ?? '',
             'dueDate': due ?? DateTime.now().add(const Duration(days: 7)),
             'projectName': map['projectName'] ?? map['project_name'] ?? '',
-            'projectColor': map['projectColor'] ?? map['project_color'] ?? '#6366F1',
+            'projectColor':
+                map['projectColor'] ?? map['project_color'] ?? '#6366F1',
             'isCompleted': map['isCompleted'] ?? map['is_completed'] ?? false,
           };
         }).toList();
@@ -110,9 +113,9 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _loading = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(err.message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(err.message)));
     } catch (err) {
       if (!mounted) return;
       setState(() {
@@ -155,7 +158,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               child: Row(
                 children: [
-                  // Avatar với gradient border
+                  // Avatar v?i gradient border
                   Container(
                     padding: const EdgeInsets.all(2),
                     decoration: BoxDecoration(
@@ -205,7 +208,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                   ),
-                  // Icon thông báo với badge
+                  // Icon th?ng b?o v?i badge
                   Stack(
                     children: [
                       Container(
@@ -215,13 +218,15 @@ class _HomeScreenState extends State<HomeScreen> {
                           color: const Color(0xFFF3F4F6),
                           borderRadius: BorderRadius.circular(14),
                         ),
-                          child: IconButton(
-                            icon: const Icon(Icons.notifications_none),
-                            color: const Color(0xFF1F2937),
-                            onPressed: _showNotificationsPanel,
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                          ),
+                        child: IconButton(
+                          icon: const Icon(Icons.notifications_none),
+                          color: const Color(0xFF1F2937),
+                          onPressed: () {
+                            Navigator.pushNamed(context, '/notifications');
+                          },
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
                       ),
                       if (unreadNotifications > 0)
                         Positioned(
@@ -232,11 +237,15 @@ class _HomeScreenState extends State<HomeScreen> {
                             height: 18,
                             decoration: const BoxDecoration(
                               color: Color(0xFFEF4444),
-                              borderRadius: BorderRadius.all(Radius.circular(9)),
+                              borderRadius: BorderRadius.all(
+                                Radius.circular(9),
+                              ),
                             ),
                             child: Center(
                               child: Text(
-                                unreadNotifications > 99 ? '99+' : unreadNotifications.toString(),
+                                unreadNotifications > 99
+                                    ? '99+'
+                                    : unreadNotifications.toString(),
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 10,
@@ -253,7 +262,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 8),
 
-            // ============ NỘI DUNG CHÍNH ============
+            // ============ N?I DUNG CH?NH ============
             Expanded(
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
@@ -261,455 +270,473 @@ class _HomeScreenState extends State<HomeScreen> {
                       physics: const BouncingScrollPhysics(),
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                       child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // ----- THÔNG TIN NHANH -----
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            Color(0xFF6366F1),
-                            Color(0xFF8B5CF6),
-                            Color(0xFFA78BFA),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(
-                              0xFF6366F1,
-                            ).withValues(alpha: 0.3),
-                            spreadRadius: 2,
-                            blurRadius: 15,
-                            offset: const Offset(0, 8),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _buildStatItem(
-                            icon: Icons.folder_open_rounded,
-                            value: projects.length.toString(),
-                            label: 'Dự án đã tham gia',
-                          ),
+                          // ----- TH?NG TIN NHANH -----
                           Container(
-                            width: 1,
-                            height: 50,
-                            color: Colors.white.withValues(alpha: 0.2),
-                          ),
-                          _buildStatItem(
-                            icon: Icons.pending_actions_rounded,
-                            value: incompleteTasks.length.toString(),
-                            label: 'Task chưa hoàn thành',
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-
-                    // ----- DỰ ÁN CỦA BẠN -----
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            const Text(
-                              '📁 Dự án của bạn',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1F2937),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF6366F1),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                projects.length.toString(),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        TextButton(
-                          onPressed: () {},
-                          style: TextButton.styleFrom(
-                            padding: EdgeInsets.zero,
-                            minimumSize: Size.zero,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                          child: const Text(
-                            'Xem tất cả →',
-                            style: TextStyle(
-                              color: Color(0xFF6366F1),
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      height: 140,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: projects.length,
-                        itemBuilder: (context, index) {
-                          final project = projects[index];
-                          final projectColorHex =
-                              'FF${project['color']!.substring(1)}';
-                          final progress = project['totalTasks'] > 0
-                              ? project['completedTasks'] /
-                                    project['totalTasks']
-                              : 0.0;
-
-                          return Container(
-                            width: 180,
-                            margin: const EdgeInsets.only(right: 12),
-                            padding: const EdgeInsets.all(16),
+                            padding: const EdgeInsets.all(20),
                             decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(16),
+                              gradient: const LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  Color(0xFF6366F1),
+                                  Color(0xFF8B5CF6),
+                                  Color(0xFFA78BFA),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(20),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.grey.withValues(alpha: 0.08),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        color: Color(
-                                          int.parse(projectColorHex, radix: 16),
-                                        ).withValues(alpha: 0.1),
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                      child: Icon(
-                                        project['icon'],
-                                        size: 18,
-                                        color: Color(
-                                          int.parse(projectColorHex, radix: 16),
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Text(
-                                        project['name'],
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 14,
-                                          color: Color(0xFF1F2937),
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const Spacer(),
-                                Text(
-                                  project['description'],
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    color: Color(0xFF6B7280),
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(6),
-                                        child: LinearProgressIndicator(
-                                          value: progress,
-                                          backgroundColor: const Color(
-                                            0xFFF3F4F6,
-                                          ),
-                                          color: Color(
-                                            int.parse(
-                                              projectColorHex,
-                                              radix: 16,
-                                            ),
-                                          ),
-                                          minHeight: 6,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      '${(progress * 100).round()}%',
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        color: Color(0xFF6B7280),
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-
-                    // ----- NHIỆM VỤ CỦA BẠN -----
-                    Row(
-                      children: [
-                        const Text(
-                          '📋  Nhiệm vụ của bạn',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF1F2937),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF59E0B),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            incompleteTasks.length.toString(),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    if (incompleteTasks.isEmpty)
-                      Container(
-                        padding: const EdgeInsets.all(32),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withValues(alpha: 0.05),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          children: [
-                            Icon(
-                              Icons.check_circle_outline,
-                              size: 56,
-                              color: const Color(
-                                0xFF6B7280,
-                              ).withValues(alpha: 0.3),
-                            ),
-                            const SizedBox(height: 12),
-                            const Text(
-                              '🎉 Không có nhiệm vụ nào!',
-                              style: TextStyle(
-                                color: Color(0xFF6B7280),
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    else
-                      Column(
-                        children: incompleteTasks.map((task) {
-                          final dueDate = task['dueDate'] as DateTime;
-                          final isOverdue = dueDate.isBefore(DateTime.now());
-                          final projectColor = Color(
-                            int.parse(
-                              'FF${task['projectColor']!.substring(1)}',
-                              radix: 16,
-                            ),
-                          );
-
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 10),
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(14),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.grey.withValues(alpha: 0.06),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 4),
+                                  color: const Color(
+                                    0xFF6366F1,
+                                  ).withValues(alpha: 0.3),
+                                  spreadRadius: 2,
+                                  blurRadius: 15,
+                                  offset: const Offset(0, 8),
                                 ),
                               ],
                             ),
                             child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                // Trạng thái
+                                _buildStatItem(
+                                  icon: Icons.folder_open_rounded,
+                                  value: projects.length.toString(),
+                                  label: 'Dự án đã tham gia',
+                                ),
                                 Container(
-                                  width: 40,
-                                  height: 40,
-                                  decoration: BoxDecoration(
-                                    color:
-                                        (isOverdue
-                                                ? const Color(0xFFEF4444)
-                                                : const Color(0xFF10B981))
-                                            .withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(12),
+                                  width: 1,
+                                  height: 50,
+                                  color: Colors.white.withValues(alpha: 0.2),
+                                ),
+                                _buildStatItem(
+                                  icon: Icons.pending_actions_rounded,
+                                  value: incompleteTasks.length.toString(),
+                                  label: 'Task chưa hoàn thành',
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+
+                          // ----- D? ?N C?A B?N -----
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  const Text(
+                                    'Dự án của bạn',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF1F2937),
+                                    ),
                                   ),
-                                  child: Icon(
-                                    isOverdue
-                                        ? Icons.warning_amber_rounded
-                                        : Icons.hourglass_top_rounded,
-                                    color: isOverdue
-                                        ? const Color(0xFFEF4444)
-                                        : const Color(0xFF10B981),
-                                    size: 22,
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF6366F1),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      projects.length.toString(),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              TextButton(
+                                onPressed: () {},
+                                style: TextButton.styleFrom(
+                                  padding: EdgeInsets.zero,
+                                  minimumSize: Size.zero,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                child: const Text(
+                                  'Xem tất cả →',
+                                  style: TextStyle(
+                                    color: Color(0xFF6366F1),
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13,
                                   ),
                                 ),
-                                const SizedBox(width: 14),
-                                // Thông tin
-                                Expanded(
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            height: 140,
+                            child: ListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: projects.length,
+                              itemBuilder: (context, index) {
+                                final project = projects[index];
+                                final projectColor = parseHexColor(
+                                  project['color'],
+                                );
+                                final progress = project['totalTasks'] > 0
+                                    ? project['completedTasks'] /
+                                          project['totalTasks']
+                                    : 0.0;
+
+                                return Container(
+                                  width: 180,
+                                  margin: const EdgeInsets.only(right: 12),
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.grey.withValues(
+                                          alpha: 0.08,
+                                        ),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                                  ),
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
+                                      Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.all(8),
+                                            decoration: BoxDecoration(
+                                              color: projectColor.withValues(
+                                                alpha: 0.1,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                            child: Icon(
+                                              project['icon'],
+                                              size: 18,
+                                              color: projectColor,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Text(
+                                              project['name'],
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: 14,
+                                                color: Color(0xFF1F2937),
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const Spacer(),
                                       Text(
-                                        task['title'],
+                                        project['description'],
                                         style: const TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w600,
-                                          color: Color(0xFF1F2937),
+                                          fontSize: 11,
+                                          color: Color(0xFF6B7280),
                                         ),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
-                                      const SizedBox(height: 6),
-
-                                      // Tên dự án
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 2,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: projectColor.withValues(alpha: 0.1),
-                                          borderRadius: BorderRadius.circular(8),
-                                        ),
-                                        child: Text(
-                                          task['projectName'],
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w500,
-                                            color: projectColor,
-                                          ),
-                                        ),
-                                      ),
-
-                                      const SizedBox(height: 6),
-
-                                      // Thời gian
+                                      const SizedBox(height: 8),
                                       Row(
                                         children: [
-                                          const Icon(
-                                            Icons.access_time_rounded,
-                                            size: 14,
-                                            color: Color(0xFF6B7280),
+                                          Expanded(
+                                            child: ClipRRect(
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                              child: LinearProgressIndicator(
+                                                value: progress,
+                                                backgroundColor: const Color(
+                                                  0xFFF3F4F6,
+                                                ),
+                                                color: projectColor,
+                                                minHeight: 6,
+                                              ),
+                                            ),
                                           ),
-                                          const SizedBox(width: 4),
+                                          const SizedBox(width: 8),
                                           Text(
-                                            '${dueDate.day.toString().padLeft(2, '0')}/${dueDate.month.toString().padLeft(2, '0')}',
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: isOverdue
-                                                  ? const Color(0xFFEF4444)
-                                                  : const Color(0xFF6B7280),
-                                              fontWeight: isOverdue
-                                                  ? FontWeight.w600
-                                                  : FontWeight.w400,
+                                            '${(progress * 100).round()}%',
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              color: Color(0xFF6B7280),
+                                              fontWeight: FontWeight.w600,
                                             ),
                                           ),
                                         ],
                                       ),
                                     ],
                                   ),
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+
+                          // ----- NHI?M V? C?A B?N -----
+                          Row(
+                            children: [
+                              const Text(
+                                'Nhiệm vụ của bạn',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF1F2937),
                                 ),
-                                // Badge
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 5,
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF59E0B),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  incompleteTasks.length.toString(),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
                                   ),
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      colors: isOverdue
-                                          ? [
-                                              const Color(0xFFEF4444),
-                                              const Color(0xFFDC2626),
-                                            ]
-                                          : [
-                                              const Color(0xFF10B981),
-                                              const Color(0xFF059669),
-                                            ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          if (incompleteTasks.isEmpty)
+                            Container(
+                              padding: const EdgeInsets.all(32),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.grey.withValues(alpha: 0.05),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                children: [
+                                  Icon(
+                                    Icons.check_circle_outline,
+                                    size: 56,
+                                    color: const Color(
+                                      0xFF6B7280,
+                                    ).withValues(alpha: 0.3),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  const Text(
+                                    'Không có nhiệm vụ nào!',
+                                    style: TextStyle(
+                                      color: Color(0xFF6B7280),
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w500,
                                     ),
-                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                ],
+                              ),
+                            )
+                          else
+                            Column(
+                              children: incompleteTasks.map((task) {
+                                final dueDate = task['dueDate'] as DateTime;
+                                final isOverdue = dueDate.isBefore(
+                                  DateTime.now(),
+                                );
+                                final projectColor = parseHexColor(
+                                  task['projectColor'],
+                                );
+
+                                return Container(
+                                  margin: const EdgeInsets.only(bottom: 10),
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(14),
                                     boxShadow: [
                                       BoxShadow(
-                                        color:
-                                            (isOverdue
-                                                    ? const Color(0xFFEF4444)
-                                                    : const Color(0xFF10B981))
-                                                .withValues(alpha: 0.3),
-                                        blurRadius: 6,
-                                        offset: const Offset(0, 2),
+                                        color: Colors.grey.withValues(
+                                          alpha: 0.06,
+                                        ),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 4),
                                       ),
                                     ],
                                   ),
-                                  child: Text(
-                                    isOverdue ? 'Quá hạn' : 'Đang làm',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                                  child: Row(
+                                    children: [
+                                      // Tr?ng th?i
+                                      Container(
+                                        width: 40,
+                                        height: 40,
+                                        decoration: BoxDecoration(
+                                          color:
+                                              (isOverdue
+                                                      ? const Color(0xFFEF4444)
+                                                      : const Color(0xFF10B981))
+                                                  .withValues(alpha: 0.1),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                        ),
+                                        child: Icon(
+                                          isOverdue
+                                              ? Icons.warning_amber_rounded
+                                              : Icons.hourglass_top_rounded,
+                                          color: isOverdue
+                                              ? const Color(0xFFEF4444)
+                                              : const Color(0xFF10B981),
+                                          size: 22,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 14),
+                                      // Th?ng tin
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              task['title'],
+                                              style: const TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w600,
+                                                color: Color(0xFF1F2937),
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            const SizedBox(height: 6),
+
+                                            // T?n d? ?n
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 2,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: projectColor.withValues(
+                                                  alpha: 0.1,
+                                                ),
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                              child: Text(
+                                                task['projectName'],
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w500,
+                                                  color: projectColor,
+                                                ),
+                                              ),
+                                            ),
+
+                                            const SizedBox(height: 6),
+
+                                            // Th?i gian
+                                            Row(
+                                              children: [
+                                                const Icon(
+                                                  Icons.access_time_rounded,
+                                                  size: 14,
+                                                  color: Color(0xFF6B7280),
+                                                ),
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  '${dueDate.day.toString().padLeft(2, '0')}/${dueDate.month.toString().padLeft(2, '0')}',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: isOverdue
+                                                        ? const Color(
+                                                            0xFFEF4444,
+                                                          )
+                                                        : const Color(
+                                                            0xFF6B7280,
+                                                          ),
+                                                    fontWeight: isOverdue
+                                                        ? FontWeight.w600
+                                                        : FontWeight.w400,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      // Badge
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 5,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            colors: isOverdue
+                                                ? [
+                                                    const Color(0xFFEF4444),
+                                                    const Color(0xFFDC2626),
+                                                  ]
+                                                : [
+                                                    const Color(0xFF10B981),
+                                                    const Color(0xFF059669),
+                                                  ],
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            20,
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color:
+                                                  (isOverdue
+                                                          ? const Color(
+                                                              0xFFEF4444,
+                                                            )
+                                                          : const Color(
+                                                              0xFF10B981,
+                                                            ))
+                                                      .withValues(alpha: 0.3),
+                                              blurRadius: 6,
+                                              offset: const Offset(0, 2),
+                                            ),
+                                          ],
+                                        ),
+                                        child: Text(
+                                          isOverdue ? 'Quá hạn' : 'Đang làm',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                              ],
+                                );
+                              }).toList(),
                             ),
-                          );
-                        }).toList(),
-                      ),
-                    const SizedBox(height: 20),
-                  ],
+                          const SizedBox(height: 20),
+                        ],
                       ),
                     ),
             ),
@@ -739,23 +766,24 @@ class _HomeScreenState extends State<HomeScreen> {
               _currentIndex = index;
             });
 
-            // Xử lý điều hướng
+            // X? l? ?i?u h??ng
             switch (index) {
               case 0:
                 Navigator.pushReplacementNamed(context, '/home');
                 break;
               case 1:
-                Navigator.pushReplacementNamed(context, '/projects');
+                Navigator.pushReplacementNamed(context, '/timeline');
                 break;
               case 2:
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('📩 Tin nhắn')),
-                );
+                Navigator.pushReplacementNamed(context, '/projects');
                 break;
               case 3:
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('👤 Profile')),
-                );
+                Navigator.pushReplacementNamed(context, '/chat');
+                break;
+              case 4:
+
+                Navigator.pushReplacementNamed(context, '/profile');
+
                 break;
             }
           },
@@ -772,6 +800,11 @@ class _HomeScreenState extends State<HomeScreen> {
               icon: Icon(Icons.home_rounded),
               activeIcon: Icon(Icons.home_rounded),
               label: 'Trang chủ',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.calendar_month_rounded),
+              activeIcon: Icon(Icons.calendar_month_rounded),
+              label: 'Lịch',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.folder_rounded),
@@ -836,13 +869,18 @@ class _HomeScreenState extends State<HomeScreen> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: const BoxDecoration(
-                        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+                        borderRadius: BorderRadius.vertical(
+                          top: Radius.circular(12),
+                        ),
                         color: Color(0xFFF9FAFB),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('Thông báo', style: TextStyle(fontWeight: FontWeight.bold)),
+                          const Text(
+                            'Thông báo',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                           IconButton(
                             icon: const Icon(Icons.mark_email_read_rounded),
                             onPressed: () async {
@@ -868,20 +906,30 @@ class _HomeScreenState extends State<HomeScreen> {
                               shrinkWrap: true,
                               padding: const EdgeInsets.all(8),
                               itemCount: notifications.length,
-                              separatorBuilder: (context, index) => const Divider(height: 1),
+                              separatorBuilder: (context, index) =>
+                                  const Divider(height: 1),
                               itemBuilder: (context, index) {
                                 final n = notifications[index];
                                 return ListTile(
-                                  tileColor: n['read'] ? null : const Color(0xFFF5F3FF),
+                                  tileColor: n['read']
+                                      ? null
+                                      : const Color(0xFFF5F3FF),
                                   title: Text(n['content'] ?? ''),
-                                  subtitle: Text(n['created_at']?.toString() ?? ''),
+                                  subtitle: Text(
+                                    n['created_at']?.toString() ?? '',
+                                  ),
                                   onTap: () async {
                                     if (n['read'] == false) {
                                       try {
-                                        await svc.markNotificationRead(int.parse(n['id'].toString()), true);
+                                        await svc.markNotificationRead(
+                                          int.parse(n['id'].toString()),
+                                          true,
+                                        );
                                         setState(() {
                                           n['read'] = true;
-                                          if (unreadNotifications > 0) unreadNotifications -= 1;
+                                          if (unreadNotifications > 0) {
+                                            unreadNotifications -= 1;
+                                          }
                                         });
                                       } catch (_) {}
                                     }
@@ -903,10 +951,14 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     } on ApiException catch (err) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err.message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(err.message)));
     } catch (err) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Không thể tải thông báo.')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Không thể tải thông báo.')));
     }
   }
 

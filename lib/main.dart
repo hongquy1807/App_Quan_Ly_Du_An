@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
+
+import 'chat_screen.dart';
+import 'create_task_screen.dart';
+import 'forgot_password_screen.dart';
 import 'home_screen.dart';
 import 'login_screen.dart';
-import 'register_screen.dart';
-import 'forgot_password_screen.dart';
-import 'reset_password_screen.dart';
+import 'notification_screen.dart';
+import 'profile_screen.dart';
 import 'project_screen.dart';
+import 'register_screen.dart';
+import 'reset_password_screen.dart';
+import 'timeline_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -28,7 +34,12 @@ class MyApp extends StatelessWidget {
         '/register': (context) => const RegisterScreen(),
         '/forgot-password': (context) => const ForgotPasswordScreen(),
         '/home': (context) => const HomeScreen(),
+        '/timeline': (context) => const TimelineScreen(),
         '/projects': (context) => const ProjectScreen(),
+        '/chat': (context) => const ChatScreen(),
+        '/profile': (context) => const ProfileScreen(),
+        '/notifications': (context) => const NotificationScreen(),
+        '/create-task': (context) => const CreateTaskScreen(),
       },
       onGenerateRoute: (settings) {
         if (settings.name == '/reset-password') {

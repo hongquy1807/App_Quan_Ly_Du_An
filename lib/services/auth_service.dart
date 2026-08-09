@@ -17,26 +17,50 @@ class AuthService {
   AuthService({http.Client? client}) : _client = client ?? http.Client();
 
   final http.Client _client;
+  static const _tokenStorageKey = 'auth_token';
+  static const _rememberStorageKey = 'remember_login';
   static String? _token;
   static bool _tokenLoaded = false;
 
   static Future<void> _ensureTokenLoaded() async {
     if (_tokenLoaded) return;
     final prefs = await SharedPreferences.getInstance();
-    _token = prefs.getString('auth_token');
+    final rememberLogin = prefs.getBool(_rememberStorageKey) ?? false;
+    _token = rememberLogin ? prefs.getString(_tokenStorageKey) : null;
     _tokenLoaded = true;
   }
 
-  static Future<void> saveToken(String? token) async {
+  static Future<void> saveToken(String? token, {bool rememberLogin = true}) async {
     final prefs = await SharedPreferences.getInstance();
     if (token == null || token.isEmpty) {
-      await prefs.remove('auth_token');
+      await prefs.remove(_tokenStorageKey);
+      await prefs.setBool(_rememberStorageKey, false);
       _token = null;
     } else {
-      await prefs.setString('auth_token', token);
       _token = token;
+      await prefs.setBool(_rememberStorageKey, rememberLogin);
+      if (rememberLogin) {
+        await prefs.setString(_tokenStorageKey, token);
+      } else {
+        await prefs.remove(_tokenStorageKey);
+      }
     }
     _tokenLoaded = true;
+  }
+
+  static Future<bool> shouldAutoLogin() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rememberLogin = prefs.getBool(_rememberStorageKey) ?? false;
+    final token = prefs.getString(_tokenStorageKey);
+    if (!rememberLogin || token == null || token.isEmpty) return false;
+    _token = token;
+    _tokenLoaded = true;
+    return true;
+  }
+
+  static Future<bool> getRememberLogin() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_rememberStorageKey) ?? false;
   }
 
   static String get baseUrl {
@@ -45,7 +69,10 @@ class AuthService {
 
     if (kIsWeb) return 'http://localhost:3000/api';
     if (defaultTargetPlatform == TargetPlatform.android) {
+      // IP nhà hongquy
       return 'http://192.168.1.29:3000/api';
+      // IP ở trường
+      //return 'http://192.168.0.195:3000/api';
     }
     return 'http://localhost:3000/api';
   }
@@ -53,12 +80,13 @@ class AuthService {
   Future<Map<String, dynamic>> login({
     required String email,
     required String password,
+    bool rememberLogin = false,
   }) async {
     final data = await _post('/auth/login', {
       'email': email,
       'password': password,
     });
-    await saveToken(data['token']?.toString());
+    await saveToken(data['token']?.toString(), rememberLogin: rememberLogin);
     return data;
   }
 
@@ -67,13 +95,11 @@ class AuthService {
     required String email,
     required String password,
   }) async {
-    final data = await _post('/auth/register', {
+    return _post('/auth/register', {
       'name': name,
       'email': email,
       'password': password,
     });
-    await saveToken(data['token']?.toString());
-    return data;
   }
 
   Future<Map<String, dynamic>> forgotPassword({required String email}) {

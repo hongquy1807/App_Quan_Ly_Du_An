@@ -1,115 +1,173 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'app_theme_controller.dart';
+import 'services/project_service.dart';
+import 'task_detail_screen.dart';
+import 'widgets/app_bottom_navigation.dart';
 import 'utils/color_utils.dart';
 
+enum TimelineLanguage { vietnamese, english, chinese }
+
 class TimelineScreen extends StatefulWidget {
-  const TimelineScreen({super.key});
+  final bool showBottomNavigation;
+
+  const TimelineScreen({super.key, this.showBottomNavigation = true});
 
   @override
   State<TimelineScreen> createState() => _TimelineScreenState();
 }
 
 class _TimelineScreenState extends State<TimelineScreen> {
+  final ProjectService _projectService = ProjectService();
   String? _selectedProjectId;
   DateTime _startOfWeek = DateTime.now();
   String _selectedMode = 'overview';
   DateTime _selectedDate = DateTime.now();
+  TimelineLanguage _language = TimelineLanguage.vietnamese;
+  bool _isLoadingTimeline = true;
+  String? _timelineError;
 
-  final List<Map<String, dynamic>> _projects = [
-    {'id': '1', 'name': 'App di động', 'color': '#6366F1'},
-    {'id': '2', 'name': 'Website bán hàng', 'color': '#EC4899'},
-    {'id': '3', 'name': 'Dự án AI', 'color': '#F59E0B'},
-  ];
+  bool get _isPinkTheme => appThemeController.mode == AppThemeMode.pink;
 
-  late final List<Map<String, dynamic>> _allTasks;
+  Color get _timelineSurface =>
+      _isPinkTheme ? const Color(0xFFFFFBFD) : appThemeController.surfaceColor;
+
+  Color get _timelineSoft =>
+      _isPinkTheme ? const Color(0xFFFFE4F1) : appThemeController.surfaceColor;
+
+  Color get _timelineBorder =>
+      _isPinkTheme ? const Color(0xFFF9A8D4) : Colors.grey.shade200;
+
+  Color get _timelineText =>
+      _isPinkTheme ? const Color(0xFF831843) : appThemeController.textColor;
+
+  Color get _timelineMuted =>
+      _isPinkTheme ? const Color(0xFF9D174D) : appThemeController.mutedTextColor;
+
+  final List<Map<String, dynamic>> _projects = [];
+
+  final List<Map<String, dynamic>> _allTasks = [];
   List<Map<String, dynamic>> _filteredTasks = [];
+  String? _currentUserId;
 
   @override
   void initState() {
     super.initState();
+    _loadLanguage();
     final now = DateTime.now();
     _startOfWeek = DateTime(now.year, now.month, now.day - now.weekday + 1);
     _selectedDate = DateTime(now.year, now.month, now.day);
-    _allTasks = _buildSampleTasks();
-    _filterTasks();
+    _loadTimeline();
   }
 
-  List<Map<String, dynamic>> _buildSampleTasks() {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+  String _t(String vi, String en, String zh) {
+    switch (_language) {
+      case TimelineLanguage.vietnamese:
+        return vi;
+      case TimelineLanguage.english:
+        return en;
+      case TimelineLanguage.chinese:
+        return zh;
+    }
+  }
 
-    return [
-      {
-        'id': '1',
-        'title': 'Fix giao diện trang chủ',
-        'projectId': '1',
-        'projectName': 'App di động',
-        'startDate': today.subtract(const Duration(days: 2)),
-        'endDate': today.add(const Duration(days: 2)),
-        'color': '#6366F1',
-        'progress': 70,
-      },
-      {
-        'id': '2',
-        'title': 'Xây dựng API đăng nhập',
-        'projectId': '1',
-        'projectName': 'App di động',
-        'startDate': today,
-        'endDate': today.add(const Duration(days: 3)),
-        'color': '#6366F1',
-        'progress': 40,
-      },
-      {
-        'id': '3',
-        'title': 'Thiết kế database',
-        'projectId': '2',
-        'projectName': 'Website bán hàng',
-        'startDate': today.add(const Duration(days: 1)),
-        'endDate': today.add(const Duration(days: 4)),
-        'color': '#EC4899',
-        'progress': 100,
-      },
-      {
-        'id': '4',
-        'title': 'Tối ưu hiệu suất',
-        'projectId': '2',
-        'projectName': 'Website bán hàng',
-        'startDate': today.add(const Duration(days: 2)),
-        'endDate': today.add(const Duration(days: 5)),
-        'color': '#EC4899',
-        'progress': 20,
-      },
-      {
-        'id': '5',
-        'title': 'Training model AI',
-        'projectId': '3',
-        'projectName': 'Dự án AI',
-        'startDate': today.add(const Duration(days: 3)),
-        'endDate': today.add(const Duration(days: 7)),
-        'color': '#F59E0B',
-        'progress': 55,
-      },
-      {
-        'id': '6',
-        'title': 'Viết tài liệu dự án',
-        'projectId': '3',
-        'projectName': 'Dự án AI',
-        'startDate': today.add(const Duration(days: 4)),
-        'endDate': today.add(const Duration(days: 8)),
-        'color': '#F59E0B',
-        'progress': 10,
-      },
-      {
-        'id': '7',
-        'title': 'Deploy lên production',
-        'projectId': '1',
-        'projectName': 'App di động',
-        'startDate': today.add(const Duration(days: 5)),
-        'endDate': today.add(const Duration(days: 10)),
-        'color': '#6366F1',
-        'progress': 0,
-      },
-    ];
+  Future<void> _loadLanguage() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawValue = prefs.getString('app_language');
+    if (!mounted) return;
+    setState(() {
+      _language = TimelineLanguage.values.firstWhere(
+        (language) => language.name == rawValue,
+        orElse: () => TimelineLanguage.vietnamese,
+      );
+    });
+  }
+
+  Future<void> _loadTimeline() async {
+    setState(() {
+      _isLoadingTimeline = true;
+      _timelineError = null;
+    });
+
+    try {
+      final data = await _projectService.getTimeline(
+        weekStart: _startOfWeek,
+        projectId: _selectedProjectId,
+      );
+      final projects = data['projects'];
+      final tasks = data['tasks'];
+      final currentUserId = data['current_user_id']?.toString();
+
+      if (!mounted) return;
+      final apiProjects = projects is List
+          ? projects
+              .whereType<Map>()
+              .map((project) => Map<String, dynamic>.from(project))
+              .toList()
+          : <Map<String, dynamic>>[];
+      final apiTasks = tasks is List
+          ? tasks
+              .whereType<Map>()
+              .map((task) => _mapApiTask(Map<String, dynamic>.from(task)))
+              .toList()
+          : <Map<String, dynamic>>[];
+      setState(() {
+        _projects
+          ..clear()
+          ..addAll(apiProjects);
+        _allTasks
+          ..clear()
+          ..addAll(apiTasks);
+        _currentUserId = currentUserId;
+        _isLoadingTimeline = false;
+      });
+      _filterTasks();
+    } catch (err) {
+      if (!mounted) return;
+      setState(() {
+        _timelineError = err.toString();
+        _isLoadingTimeline = false;
+        _filteredTasks = [];
+      });
+    }
+  }
+
+  Map<String, dynamic> _mapApiTask(Map<String, dynamic> task) {
+    final start = _parseApiDate(task['startDate'] ?? task['start_date']) ??
+        _parseApiDate(task['created_at']) ??
+        DateTime.now();
+    final end = _parseApiDate(task['endDate'] ?? task['end_date']) ??
+        _parseApiDate(task['due_date']) ??
+        start;
+
+    return {
+      ...task,
+      'id': task['id']?.toString() ?? '',
+      'title': task['title']?.toString() ?? '',
+      'projectId':
+          task['projectId']?.toString() ?? task['project_id']?.toString() ?? '',
+      'projectName': task['projectName']?.toString() ??
+          task['project_name']?.toString() ??
+          '',
+      'assigneeId':
+          task['assigneeId']?.toString() ?? task['assignee_id']?.toString() ?? '',
+      'assignee_id': task['assignee_id'],
+      'startDate': DateTime(start.year, start.month, start.day),
+      'endDate': DateTime(end.year, end.month, end.day),
+      'color': task['color']?.toString() ??
+          task['projectColor']?.toString() ??
+          '#6366F1',
+      'progress': NumberParser.toInt(task['progress']).clamp(0, 100),
+    };
+  }
+
+  DateTime? _parseApiDate(dynamic value) {
+    if (value == null) return null;
+    if (value is DateTime) return value;
+    final text = value.toString().trim();
+    if (text.isEmpty) return null;
+    return DateTime.tryParse(text);
   }
 
   void _filterTasks() {
@@ -126,8 +184,13 @@ class _TimelineScreenState extends State<TimelineScreen> {
             final isInWeek =
                 (start.isBefore(weekEnd.add(const Duration(days: 1))) &&
                 end.isAfter(_startOfWeek.subtract(const Duration(days: 1))));
+            final isAssignedToCurrentUser =
+                _currentUserId == null ||
+                _currentUserId!.isEmpty ||
+                task['assigneeId']?.toString().isEmpty == true ||
+                task['assigneeId']?.toString() == _currentUserId;
 
-            return isInSelectedProject && isInWeek;
+            return isAssignedToCurrentUser && isInSelectedProject && isInWeek;
           }).toList()..sort(
             (a, b) => (a['startDate'] as DateTime).compareTo(
               b['startDate'] as DateTime,
@@ -141,7 +204,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
       _startOfWeek = _startOfWeek.add(Duration(days: direction * 7));
       _selectedDate = _selectedDate.add(Duration(days: direction * 7));
     });
-    _filterTasks();
+    _loadTimeline();
   }
 
   void _goToToday() {
@@ -150,7 +213,39 @@ class _TimelineScreenState extends State<TimelineScreen> {
       _startOfWeek = DateTime(now.year, now.month, now.day - now.weekday + 1);
       _selectedDate = DateTime(now.year, now.month, now.day);
     });
-    _filterTasks();
+    _loadTimeline();
+  }
+
+  Future<void> _openTaskDetail(Map<String, dynamic> task) async {
+    final project = {
+      'id': task['projectId']?.toString() ?? '',
+      'name': task['projectName']?.toString() ?? '',
+      'description': '',
+      'color': task['color']?.toString() ?? '#6366F1',
+    };
+
+    final detailTask = {
+      ...task,
+      'project_id': task['projectId']?.toString() ?? '',
+      'projectName': task['projectName']?.toString() ?? '',
+      'projectColor': task['color']?.toString() ?? '#6366F1',
+      'dueDate': task['endDate'],
+      'description': task['description']?.toString() ?? '',
+    };
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TaskDetailScreen(
+          task: detailTask,
+          project: project,
+        ),
+      ),
+    );
+
+    if (mounted) {
+      _loadTimeline();
+    }
   }
 
   String _formatDate(DateTime date) => DateFormat('dd/MM').format(date);
@@ -167,25 +262,68 @@ class _TimelineScreenState extends State<TimelineScreen> {
   }
 
   String _weekdayShort(DateTime date) {
-    const weekdays = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
-    return weekdays[date.weekday - 1];
-  }
-
-  String _weekdayFull(DateTime date) {
-    const weekdays = [
-      'Thứ Hai',
-      'Thứ Ba',
-      'Thứ Tư',
-      'Thứ Năm',
-      'Thứ Sáu',
-      'Thứ Bảy',
-      'Chủ Nhật',
+    final weekdays = [
+      _t('T2', 'Mon', '周一'),
+      _t('T3', 'Tue', '周二'),
+      _t('T4', 'Wed', '周三'),
+      _t('T5', 'Thu', '周四'),
+      _t('T6', 'Fri', '周五'),
+      _t('T7', 'Sat', '周六'),
+      _t('CN', 'Sun', '周日'),
     ];
     return weekdays[date.weekday - 1];
   }
 
+  String _weekdayFull(DateTime date) {
+    final weekdays = [
+      _t('Thứ Hai', 'Monday', '星期一'),
+      _t('Thứ Ba', 'Tuesday', '星期二'),
+      _t('Thứ Tư', 'Wednesday', '星期三'),
+      _t('Thứ Năm', 'Thursday', '星期四'),
+      _t('Thứ Sáu', 'Friday', '星期五'),
+      _t('Thứ Bảy', 'Saturday', '星期六'),
+      _t('Chủ Nhật', 'Sunday', '星期日'),
+    ];
+    return weekdays[date.weekday - 1];
+  }
+
+  String _projectName(String name) {
+    switch (name) {
+      case 'App di động':
+        return _t('App di động', 'Mobile app', '移动应用');
+      case 'Website bán hàng':
+        return _t('Website bán hàng', 'Sales website', '销售网站');
+      case 'Dự án AI':
+        return _t('Dự án AI', 'AI project', 'AI 项目');
+      default:
+        return name;
+    }
+  }
+
+  String _taskTitle(String title) {
+    switch (title) {
+      case 'Fix giao diện trang chủ':
+        return _t('Fix giao diện trang chủ', 'Fix home UI', '修复首页界面');
+      case 'Xây dựng API đăng nhập':
+        return _t('Xây dựng API đăng nhập', 'Build login API', '构建登录 API');
+      case 'Thiết kế database':
+        return _t('Thiết kế database', 'Design database', '设计数据库');
+      case 'Tối ưu hiệu suất':
+        return _t('Tối ưu hiệu suất', 'Optimize performance', '优化性能');
+      case 'Training model AI':
+        return _t('Training model AI', 'Train AI model', '训练 AI 模型');
+      case 'Viết tài liệu dự án':
+        return _t('Viết tài liệu dự án', 'Write project documentation', '编写项目文档');
+      case 'Deploy lên production':
+        return _t('Deploy lên production', 'Deploy to production', '部署到生产环境');
+      default:
+        return title;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = appThemeController;
     final weekDays = List.generate(
       7,
       (index) => _startOfWeek.add(Duration(days: index)),
@@ -193,7 +331,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
     final weekEnd = _startOfWeek.add(const Duration(days: 6));
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: theme.backgroundColor,
       body: SafeArea(
         child: Column(
           children: [
@@ -202,22 +340,28 @@ class _TimelineScreenState extends State<TimelineScreen> {
             _buildModeTabs(),
             const SizedBox(height: 16),
             Expanded(
-              child: _selectedMode == 'overview'
-                  ? _buildOverviewContent(weekDays, weekEnd)
-                  : _buildDetailContent(),
+              child: _isLoadingTimeline
+                  ? _buildLoadingState()
+                  : _timelineError != null
+                      ? _buildErrorState()
+                      : _selectedMode == 'overview'
+                          ? _buildOverviewContent(weekDays, weekEnd)
+                          : _buildDetailContent(),
             ),
           ],
         ),
       ),
-      bottomNavigationBar: _buildBottomNavigationBar(),
+      bottomNavigationBar:
+          widget.showBottomNavigation ? _buildBottomNavigationBar() : null,
     );
   }
 
   Widget _buildHeader() {
+    final theme = appThemeController;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _timelineSurface,
         borderRadius: const BorderRadius.only(
           bottomLeft: Radius.circular(24),
           bottomRight: Radius.circular(24),
@@ -232,25 +376,32 @@ class _TimelineScreenState extends State<TimelineScreen> {
       ),
       child: Column(
         children: [
-          const Row(
+          Row(
             children: [ 
-              Icon(Icons.timeline_rounded, color: Color(0xFF6366F1), size: 28),
-              SizedBox(width: 12),
+              Icon(Icons.timeline_rounded, color: theme.primaryColor, size: 28),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Lịch',
+                      _t('Lịch', 'Timeline', '日程'),
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF1F2937),
+                        color: _timelineText,
                       ),
                     ),
                     Text(
-                      'Quản lý thời gian và nhiệm vụ',
-                      style: TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+                      _t(
+                        'Quản lý thời gian và nhiệm vụ',
+                        'Manage time and tasks',
+                        '管理时间和任务',
+                      ),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: _timelineMuted,
+                      ),
                     ),
                   ],
                 ),
@@ -268,7 +419,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
       child: Container(
         padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: _timelineSoft,
           borderRadius: BorderRadius.circular(14),
           boxShadow: [
             BoxShadow(
@@ -280,8 +431,16 @@ class _TimelineScreenState extends State<TimelineScreen> {
         ),
         child: Row(
           children: [
-            _buildModeTab('overview', 'Tổng quan', Icons.timeline_rounded),
-            _buildModeTab('detail', 'Chi tiết', Icons.list_alt_rounded),
+            _buildModeTab(
+              'overview',
+              _t('Tổng quan', 'Overview', '总览'),
+              Icons.timeline_rounded,
+            ),
+            _buildModeTab(
+              'detail',
+              _t('Chi tiết', 'Details', '详情'),
+              Icons.list_alt_rounded,
+            ),
           ],
         ),
       ),
@@ -289,6 +448,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
   }
 
   Widget _buildModeTab(String value, String label, IconData icon) {
+    final theme = appThemeController;
     final selected = _selectedMode == value;
     return Expanded(
       child: InkWell(
@@ -301,7 +461,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 11),
           decoration: BoxDecoration(
-            color: selected ? const Color(0xFF6366F1) : Colors.transparent,
+            color: selected ? theme.primaryColor : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
           ),
           child: Row(
@@ -310,7 +470,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
               Icon(
                 icon,
                 size: 17,
-                color: selected ? Colors.white : const Color(0xFF6B7280),
+                color: selected ? Colors.white : _timelineMuted,
               ),
               const SizedBox(width: 6),
               Text(
@@ -318,7 +478,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
-                  color: selected ? Colors.white : const Color(0xFF4B5563),
+                  color: selected ? Colors.white : _timelineText,
                 ),
               ),
             ],
@@ -334,15 +494,14 @@ class _TimelineScreenState extends State<TimelineScreen> {
         _buildOverviewControls(weekEnd),
         const SizedBox(height: 16),
         Expanded(
-          child: _filteredTasks.isEmpty
-              ? _buildEmptyState()
-              : _buildGanttChart(weekDays),
+          child: _buildGanttChart(weekDays),
         ),
       ],
     );
   }
 
   Widget _buildOverviewControls(DateTime weekEnd, {bool padded = true}) {
+    final theme = appThemeController;
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: padded ? 20 : 0),
       child: Column(
@@ -350,7 +509,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
           Container(
             width: double.infinity,
             decoration: BoxDecoration(
-              color: const Color(0xFFF3F4F6),
+              color: _timelineSurface,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
@@ -365,10 +524,10 @@ class _TimelineScreenState extends State<TimelineScreen> {
                     child: Center(
                       child: Text(
                         '${_formatDate(_startOfWeek)} - ${_formatDate(weekEnd)}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF6366F1),
+                          color: theme.primaryColor,
                         ),
                       ),
                     ),
@@ -386,18 +545,24 @@ class _TimelineScreenState extends State<TimelineScreen> {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
-              color: const Color(0xFFF3F4F6),
+              color: _timelineSurface,
               borderRadius: BorderRadius.circular(12),
             ),
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
                 value: _selectedProjectId,
-                hint: const Text('Tất cả dự án'),
+                hint: Text(
+                  _t('Tất cả dự án', 'All projects', '所有项目'),
+                  style: TextStyle(color: _timelineMuted),
+                ),
                 isExpanded: true,
+                dropdownColor: _timelineSurface,
+                style: TextStyle(color: _timelineText),
+                iconEnabledColor: _timelineMuted,
                 items: [
-                  const DropdownMenuItem<String>(
+                  DropdownMenuItem<String>(
                     value: null,
-                    child: Text('Tất cả dự án'),
+                    child: Text(_t('Tất cả dự án', 'All projects', '所有项目')),
                   ),
                   ..._projects.map((project) {
                     final color = parseHexColor(project['color']);
@@ -414,7 +579,9 @@ class _TimelineScreenState extends State<TimelineScreen> {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          Expanded(child: Text(project['name'])),
+                          Expanded(
+                            child: Text(_projectName(project['name'])),
+                          ),
                         ],
                       ),
                     );
@@ -424,7 +591,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
                   setState(() {
                     _selectedProjectId = value;
                   });
-                  _filterTasks();
+                  _loadTimeline();
                 },
               ),
             ),
@@ -461,10 +628,10 @@ class _TimelineScreenState extends State<TimelineScreen> {
         const SizedBox(height: 16),
         Text(
           '${_weekdayFull(selectedDay)} - ${DateFormat('dd/MM/yyyy').format(selectedDay)}',
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 15,
             fontWeight: FontWeight.w700,
-            color: Color(0xFF1F2937),
+            color: _timelineText,
           ),
         ),
         const SizedBox(height: 12),
@@ -484,7 +651,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
         Container(
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: _timelineSurface,
             borderRadius: BorderRadius.circular(14),
             boxShadow: [
               BoxShadow(
@@ -503,6 +670,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
   }
 
   Widget _buildSelectableDay(DateTime day) {
+    final theme = appThemeController;
     final selected = DateFormat('dd/MM/yyyy').format(day) ==
         DateFormat('dd/MM/yyyy').format(_selectedDate);
     final isWeekend = day.weekday == 6 || day.weekday == 7;
@@ -518,7 +686,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
-            color: selected ? const Color(0xFF6366F1) : Colors.transparent,
+            color: selected ? theme.primaryColor : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
           ),
           child: Column(
@@ -532,7 +700,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
                       ? Colors.white
                       : isWeekend
                           ? const Color(0xFFEF4444)
-                          : const Color(0xFF6B7280),
+                          : _timelineMuted,
                 ),
               ),
               const SizedBox(height: 6),
@@ -541,7 +709,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
-                  color: selected ? Colors.white : const Color(0xFF1F2937),
+                  color: selected ? Colors.white : _timelineText,
                 ),
               ),
             ],
@@ -553,85 +721,89 @@ class _TimelineScreenState extends State<TimelineScreen> {
 
   Widget _buildDetailTaskCard(Map<String, dynamic> task) {
     final color = _deadlineColor(task['endDate'] as DateTime);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withValues(alpha: 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 4,
-            height: 68,
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(4),
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () => _openTaskDetail(task),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: _timelineSurface,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withValues(alpha: 0.06),
+              blurRadius: 12,
+              offset: const Offset(0, 6),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  task['title'],
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF1F2937),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 4,
+              height: 68,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _taskTitle(task['title']),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: _timelineText,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 7),
-                Row(
-                  children: [
-                    Icon(Icons.folder_rounded, size: 16, color: color),
-                    const SizedBox(width: 5),
-                    Expanded(
-                      child: Text(
-                        task['projectName'],
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Color(0xFF6B7280),
+                  const SizedBox(height: 7),
+                  Row(
+                    children: [
+                      Icon(Icons.folder_rounded, size: 16, color: color),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          _projectName(task['projectName']),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: _timelineMuted,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 7),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.access_time_rounded,
-                      size: 16,
-                      color: Color(0xFF6B7280),
-                    ),
-                    const SizedBox(width: 5),
-                    Text(
-                      'Deadline: ${DateFormat('dd/MM/yyyy').format(task['endDate'] as DateTime)}',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF4B5563),
+                    ],
+                  ),
+                  const SizedBox(height: 7),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.access_time_rounded,
+                        size: 16,
+                        color: _timelineMuted,
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                      const SizedBox(width: 5),
+                      Text(
+                        '${_t('Hạn chót', 'Deadline', '截止日期')}: ${DateFormat('dd/MM/yyyy').format(task['endDate'] as DateTime)}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: _timelineMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -640,44 +812,74 @@ class _TimelineScreenState extends State<TimelineScreen> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _timelineSurface,
         borderRadius: BorderRadius.circular(16),
       ),
-      child: const Center(
+      child: Center(
         child: Text(
-          'Ngày này chưa có nhiệm vụ nào',
-          style: TextStyle(color: Color(0xFF6B7280)),
+          _t(
+            'Ngày này chưa có nhiệm vụ nào',
+            'No tasks for this day',
+            '这一天暂无任务',
+          ),
+          style: TextStyle(color: _timelineMuted),
         ),
       ),
     );
   }
 
-  Widget _buildEmptyState() {
-    return const Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.event_busy_rounded, size: 80, color: Color(0xFFCBD5E1)),
-          SizedBox(height: 16),
-          Text(
-            'KhĂ´ng cĂ³ task trong tuáº§n nĂ y',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF6B7280),
+  Widget _buildLoadingState() {
+    final theme = appThemeController;
+    return Center(
+      child: CircularProgressIndicator(color: theme.primaryColor),
+    );
+  }
+
+  Widget _buildErrorState() {
+    final theme = appThemeController;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.wifi_off_rounded,
+              size: 64,
+              color: _timelineMuted.withValues(alpha: 0.45),
             ),
-          ),
-          SizedBox(height: 8),
-          Text(
-            'HĂ£y táº¡o task má»›i Ä‘á»ƒ theo dĂµi tiáº¿n Ä‘á»™',
-            style: TextStyle(fontSize: 14, color: Color(0xFF9CA3AF)),
-          ),
-        ],
+            const SizedBox(height: 12),
+            Text(
+              _t('Không thể tải lịch', 'Cannot load timeline', '无法加载日程'),
+              style: TextStyle(
+                color: _timelineText,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _timelineError ?? '',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: _timelineMuted, fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _loadTimeline,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: theme.primaryColor,
+                foregroundColor: Colors.white,
+              ),
+              child: Text(_t('Thử lại', 'Retry', '重试')),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildGanttChart(List<DateTime> weekDays) {
+    final theme = appThemeController;
     const dayWidth = 92.0;
     const chartWidth = dayWidth * 7;
 
@@ -692,30 +894,31 @@ class _TimelineScreenState extends State<TimelineScreen> {
             children: [
               _buildWeekHeader(weekDays, dayWidth),
               const SizedBox(height: 8),
-              ..._filteredTasks.map((task) {
+              if (_filteredTasks.isEmpty)
+                _buildOverviewEmptyRow(dayWidth)
+              else
+                ..._filteredTasks.map((task) {
                 final start = task['startDate'] as DateTime;
                 final end = task['endDate'] as DateTime;
                 final color = _deadlineColor(end);
-
-                var startIndex = 0;
-                var endIndex = 6;
-                for (var i = 0; i < 7; i++) {
-                  final day = weekDays[i];
-                  if (day.isAfter(start.subtract(const Duration(days: 1))) &&
-                      day.isBefore(end.add(const Duration(days: 1)))) {
-                    if (i < startIndex || startIndex == 0) startIndex = i;
-                    endIndex = i;
-                  }
-                }
+                final weekStart = weekDays.first;
+                final weekEnd = weekDays.last;
+                final visibleStart = start.isBefore(weekStart) ? weekStart : start;
+                final visibleEnd = end.isAfter(weekEnd) ? weekEnd : end;
+                final startIndex = visibleStart.difference(weekStart).inDays;
+                final endIndex = visibleEnd.difference(weekStart).inDays;
 
                 final leftOffset = startIndex * dayWidth;
-                final width = (endIndex - startIndex + 1) * dayWidth;
+                final width = ((endIndex - startIndex + 1) * dayWidth)
+                    .clamp(dayWidth, dayWidth * 7)
+                    .toDouble();
+                final projectName = _projectName(task['projectName']);
 
                 return Container(
-                  height: 58,
+                  height: 70,
                   margin: const EdgeInsets.only(bottom: 10),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: _timelineSurface,
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: [
                       BoxShadow(
@@ -738,14 +941,18 @@ class _TimelineScreenState extends State<TimelineScreen> {
                               decoration: BoxDecoration(
                                 border: Border(
                                   right: BorderSide(
-                                    color: Colors.grey.shade200,
+                                    color: appThemeController.isDark
+                                        ? Colors.white.withValues(alpha: 0.08)
+                                        : _timelineBorder,
                                     width: 0.5,
                                   ),
                                 ),
                                 color: isWeekend
-                                    ? const Color(
-                                        0xFFFEF2F2,
-                                      ).withValues(alpha: 0.35)
+                                    ? (appThemeController.isDark
+                                        ? theme.backgroundColor.withValues(
+                                            alpha: 0.55,
+                                          )
+                                        : _timelineSoft.withValues(alpha: 0.55))
                                     : null,
                               ),
                             ),
@@ -754,34 +961,47 @@ class _TimelineScreenState extends State<TimelineScreen> {
                       ),
                       Positioned(
                         left: leftOffset + 6,
-                        top: 10,
+                        top: 9,
                         width: width - 12,
                         child: Container(
-                          height: 38,
+                          height: 52,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
                           decoration: BoxDecoration(
                             color: color,
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          child: Stack(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              Center(
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                  ),
-                                  child: Text(
-                                    task['title'],
-                                    overflow: TextOverflow.ellipsis,
-                                    maxLines: 1,
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
+                              Text(
+                                _taskTitle(task['title']),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
                                 ),
                               ),
+                              if (projectName.isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  projectName,
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.9),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -797,11 +1017,70 @@ class _TimelineScreenState extends State<TimelineScreen> {
     );
   }
 
+  Widget _buildOverviewEmptyRow(double dayWidth) {
+    final theme = appThemeController;
+    return Container(
+      height: 92,
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: _timelineSurface,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withValues(alpha: 0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          Row(
+            children: List.generate(7, (index) {
+              final isWeekend = index >= 5;
+              return SizedBox(
+                width: dayWidth,
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: Border(
+                      right: BorderSide(
+                        color: appThemeController.isDark
+                            ? Colors.white.withValues(alpha: 0.08)
+                            : _timelineBorder,
+                        width: 0.5,
+                      ),
+                    ),
+                    color: isWeekend
+                        ? (appThemeController.isDark
+                            ? theme.backgroundColor.withValues(alpha: 0.55)
+                            : _timelineSoft.withValues(alpha: 0.55))
+                        : null,
+                  ),
+                ),
+              );
+            }),
+          ),
+          Center(
+            child: Text(
+              _t(
+                'Không có công việc trong tuần này',
+                'No work scheduled this week',
+                '本周没有工作安排',
+              ),
+              style: TextStyle(color: _timelineMuted, fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildWeekHeader(List<DateTime> weekDays, double dayWidth) {
+    final theme = appThemeController;
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _timelineSurface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -821,8 +1100,10 @@ class _TimelineScreenState extends State<TimelineScreen> {
                   style: TextStyle(
                     fontSize: 12,
                     color: isWeekend
-                        ? const Color(0xFFEF4444)
-                        : const Color(0xFF6B7280),
+                        ? (_isPinkTheme
+                              ? const Color(0xFFBE185D)
+                              : const Color(0xFFEF4444))
+                        : _timelineMuted,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -831,14 +1112,14 @@ class _TimelineScreenState extends State<TimelineScreen> {
                   width: 32,
                   height: 32,
                   decoration: BoxDecoration(
-                    color: isToday ? const Color(0xFF6366F1) : null,
+                    color: isToday ? theme.primaryColor : null,
                     shape: BoxShape.circle,
                   ),
                   child: Center(
                     child: Text(
                       date.day.toString(),
                       style: TextStyle(
-                        color: isToday ? Colors.white : const Color(0xFF1F2937),
+                        color: isToday ? Colors.white : _timelineText,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -853,79 +1134,8 @@ class _TimelineScreenState extends State<TimelineScreen> {
   }
 
   Widget _buildBottomNavigationBar() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(24),
-          topRight: Radius.circular(24),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withValues(alpha: 0.1),
-            blurRadius: 20,
-            offset: const Offset(0, -4),
-          ),
-        ],
-      ),
-      child: BottomNavigationBar(
-        currentIndex: 1,
-        onTap: (index) {
-          switch (index) {
-            case 0:
-              Navigator.pushReplacementNamed(context, '/home');
-              break;
-            case 1:
-              break;
-            case 2:
-              Navigator.pushReplacementNamed(context, '/projects');
-              break;
-            case 3:
-              Navigator.pushReplacementNamed(context, '/chat');
-              break;
-            case 4:
-
-              Navigator.pushReplacementNamed(context, '/profile');
-
-              break;
-          }
-        },
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color(0xFF6366F1),
-        unselectedItemColor: const Color(0xFF9CA3AF),
-        selectedLabelStyle: const TextStyle(
-          fontWeight: FontWeight.w600,
-          fontSize: 11,
-        ),
-        unselectedLabelStyle: const TextStyle(fontSize: 11),
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_rounded),
-            activeIcon: Icon(Icons.home_rounded),
-            label: 'Trang chá»§',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.calendar_month_rounded),
-            activeIcon: Icon(Icons.calendar_month_rounded),
-            label: 'Lá»‹ch',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.folder_rounded),
-            activeIcon: Icon(Icons.folder_rounded),
-            label: 'Dá»± Ă¡n',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.chat_rounded),
-            activeIcon: Icon(Icons.chat_rounded),
-            label: 'Tin nháº¯n',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_rounded),
-            activeIcon: Icon(Icons.person_rounded),
-            label: 'TĂ´i',
-          ),
-        ],
-      ),
+    return const AppBottomNavigation(
+      currentItem: AppBottomNavItem.timeline,
     );
   }
 }

@@ -1,21 +1,31 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'app_theme_controller.dart';
+import 'services/auth_service.dart';
+import 'services/project_chat_service.dart';
 import 'utils/color_utils.dart';
+import 'widgets/app_bottom_navigation.dart';
+
+enum ChatLanguage { vietnamese, english, chinese }
 
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key});
+  final bool showBottomNavigation;
+
+  const ChatScreen({super.key, this.showBottomNavigation = true});
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
 class _ChatScreenState extends State<ChatScreen> {
+  final ProjectChatService _chatService = ProjectChatService();
   // Danh sách dự án
   final List<Map<String, dynamic>> _projects = [
     {
       'id': '1',
       'name': 'App di động',
       'color': '#6366F1',
-      'icon': Icons.phone_android,
+      'icon': Icons.forum_rounded,
       'members': [
         {'id': '1', 'name': 'Nguyễn Văn A', 'avatar': '', 'online': true},
         {'id': '2', 'name': 'Trần Thị B', 'avatar': '', 'online': true},
@@ -30,7 +40,7 @@ class _ChatScreenState extends State<ChatScreen> {
       'id': '2',
       'name': 'Website bán hàng',
       'color': '#EC4899',
-      'icon': Icons.shopping_cart,
+      'icon': Icons.forum_rounded,
       'members': [
         {'id': '5', 'name': 'Nguyễn Văn E', 'avatar': '', 'online': false},
         {'id': '6', 'name': 'Trần Thị F', 'avatar': '', 'online': true},
@@ -44,7 +54,7 @@ class _ChatScreenState extends State<ChatScreen> {
       'id': '3',
       'name': 'Dự án AI',
       'color': '#F59E0B',
-      'icon': Icons.psychology,
+      'icon': Icons.forum_rounded,
       'members': [
         {'id': '8', 'name': 'Phạm Thị H', 'avatar': '', 'online': true},
         {'id': '9', 'name': 'Hoàng Văn I', 'avatar': '', 'online': false},
@@ -58,10 +68,19 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // Trạng thái hiện tại
   Map<String, dynamic>? _selectedProject;
+  ChatLanguage _language = ChatLanguage.vietnamese;
+  bool _showChatbot = false;
   List<Map<String, dynamic>> _messages = [];
+  final List<Map<String, dynamic>> _botMessages = [];
   final TextEditingController _messageController = TextEditingController();
+  final TextEditingController _botMessageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final ScrollController _botScrollController = ScrollController();
   bool _isLoading = false;
+  bool _isLoadingProjects = false;
+  bool _isLoadingMessages = false;
+  String? _projectError;
+  String? _messageError;
 
   // Danh sách file đính kèm
   final List<Map<String, dynamic>> _attachments = [];
@@ -69,18 +88,185 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    _loadMessages();
+    _loadLanguage();
+    _loadBotMessages();
+    _loadProjects();
   }
 
-  void _loadMessages() {
+  String _t(String vi, String en, String zh) {
+    switch (_language) {
+      case ChatLanguage.vietnamese:
+        return vi;
+      case ChatLanguage.english:
+        return en;
+      case ChatLanguage.chinese:
+        return zh;
+    }
+  }
+
+  Future<void> _loadLanguage() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawValue = prefs.getString('app_language');
+    if (!mounted) return;
+    setState(() {
+      _language = ChatLanguage.values.firstWhere(
+        (language) => language.name == rawValue,
+        orElse: () => ChatLanguage.vietnamese,
+      );
+      _loadBotMessages();
+      _loadMessages();
+    });
+  }
+
+  void _loadBotMessages() {
+    _botMessages
+      ..clear()
+      ..add({
+        'content': _t(
+          'Chào bạn, mình có thể hỗ trợ tóm tắt công việc, nhắc deadline, gợi ý chia nhiệm vụ hoặc trả lời các câu hỏi về quản lý dự án.',
+          'Hi, I can help summarize work, remind you about deadlines, suggest task breakdowns, or answer project management questions.',
+          '你好，我可以帮你总结工作、提醒截止日期、建议任务拆分，或回答项目管理相关问题。',
+        ),
+        'isMine': false,
+        'time': null,
+      });
+  }
+
+  @override
+  void dispose() {
+    _messageController.dispose();
+    _botMessageController.dispose();
+    _scrollController.dispose();
+    _botScrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadProjects() async {
+    setState(() {
+      _isLoadingProjects = true;
+      _projectError = null;
+    });
+
+    try {
+      final projects = await _chatService.getProjects();
+      if (!mounted) return;
+      setState(() {
+        _projects
+          ..clear()
+          ..addAll(projects.map(_mapProject));
+        _isLoadingProjects = false;
+      });
+    } on ApiException catch (err) {
+      if (!mounted) return;
+      setState(() {
+        _projects.clear();
+        _projectError = err.message;
+        _isLoadingProjects = false;
+      });
+    }
+  }
+
+  Future<void> _loadMessages() async {
+    final projectId = int.tryParse(_selectedProject?['id']?.toString() ?? '');
+    if (projectId == null) return;
+
+    setState(() {
+      _isLoadingMessages = true;
+      _messageError = null;
+      _messages.clear();
+    });
+
+    try {
+      final data = await _chatService.getMessages(projectId);
+      final messages = data['messages'];
+      if (!mounted) return;
+      setState(() {
+        _messages = messages is List
+            ? messages
+                .whereType<Map>()
+                .map((message) => _mapMessage(Map<String, dynamic>.from(message)))
+                .toList()
+            : [];
+        _isLoadingMessages = false;
+      });
+      _scrollToBottom();
+    } on ApiException catch (err) {
+      if (!mounted) return;
+      setState(() {
+        _messageError = err.message;
+        _isLoadingMessages = false;
+      });
+    }
+  }
+
+  Map<String, dynamic> _mapProject(Map<String, dynamic> project) {
+    final lastMessage = project['last_message'];
+    final lastMessageMap = lastMessage is Map
+        ? Map<String, dynamic>.from(lastMessage)
+        : <String, dynamic>{};
+    final projectId = int.tryParse(project['id']?.toString() ?? '') ?? 0;
+    const colors = [
+      '#6366F1',
+      '#EC4899',
+      '#F59E0B',
+      '#10B981',
+      '#8B5CF6',
+    ];
+
+    return {
+      ...project,
+      'id': project['id']?.toString() ?? '',
+      'name': project['name']?.toString() ?? _t('Dự án', 'Project', '项目'),
+      'color': project['color']?.toString() ?? colors[projectId % colors.length],
+      'icon': Icons.forum_rounded,
+      'memberCount': int.tryParse(project['member_count']?.toString() ?? '') ?? 0,
+      'lastMessage': lastMessageMap['content']?.toString() ??
+          _t('Chưa có tin nhắn', 'No messages yet', '暂无消息'),
+      'lastTime': _parseDate(lastMessageMap['created_at']) ??
+          _parseDate(project['updated_at']) ??
+          DateTime.now(),
+      'unreadCount': int.tryParse(project['unread_count']?.toString() ?? '') ?? 0,
+    };
+  }
+
+  Map<String, dynamic> _mapMessage(Map<String, dynamic> message) {
+    final type = message['message_type']?.toString() ?? 'text';
+    final content = message['content']?.toString();
+    final fileName = message['file_name']?.toString();
+    final senderName = message['sender_name']?.toString() ??
+        _t('Thành viên', 'Member', '成员');
+
+    return {
+      'id': message['id']?.toString() ?? '',
+      'sender': senderName,
+      'senderId': message['sender_id']?.toString() ?? '',
+      'content': (content == null || content.isEmpty)
+          ? (fileName ?? _t('Tệp đính kèm', 'Attachment', '附件'))
+          : content,
+      'time': _parseDate(message['created_at']) ?? DateTime.now(),
+      'isMine': message['is_mine'] == true,
+      'type': type,
+    };
+  }
+
+  DateTime? _parseDate(dynamic value) {
+    final rawValue = value?.toString();
+    if (rawValue == null || rawValue.isEmpty) return null;
+    return DateTime.tryParse(rawValue)?.toLocal();
+  }
+
+  void loadMockMessages() {
     // Giả lập dữ liệu tin nhắn
     _messages = [
       {
         'id': '1',
         'sender': 'Nguyễn Văn A',
         'senderId': '1',
-        'content':
-            'Chào mọi người! Hôm nay chúng ta sẽ bàn về thiết kế UI nhé.',
+        'content': _t(
+          'Chào mọi người! Hôm nay chúng ta sẽ bàn về thiết kế UI nhé.',
+          'Hi everyone! Today we will discuss the UI design.',
+          '大家好！今天我们来讨论 UI 设计。',
+        ),
         'time': DateTime.now().subtract(const Duration(hours: 3)),
         'isMine': true,
         'type': 'text',
@@ -89,7 +275,11 @@ class _ChatScreenState extends State<ChatScreen> {
         'id': '2',
         'sender': 'Trần Thị B',
         'senderId': '2',
-        'content': 'Tôi đã có bản thiết kế sơ bộ, mọi người xem thử nhé.',
+        'content': _t(
+          'Tôi đã có bản thiết kế sơ bộ, mọi người xem thử nhé.',
+          'I have a draft design ready. Please take a look.',
+          '我已经有初步设计稿了，大家看一下。',
+        ),
         'time': DateTime.now().subtract(const Duration(hours: 2, minutes: 30)),
         'isMine': false,
         'type': 'text',
@@ -107,8 +297,11 @@ class _ChatScreenState extends State<ChatScreen> {
         'id': '4',
         'sender': 'Lê Văn C',
         'senderId': '3',
-        'content':
-            'Giao diện đẹp quá! Tôi thấy phần header hơi to, có thể chỉnh lại được không?',
+        'content': _t(
+          'Giao diện đẹp quá! Tôi thấy phần header hơi to, có thể chỉnh lại được không?',
+          'The interface looks great! The header feels a bit large. Can we adjust it?',
+          '界面很好看！我觉得顶部区域有点大，可以调整一下吗？',
+        ),
         'time': DateTime.now().subtract(const Duration(hours: 2)),
         'isMine': false,
         'type': 'text',
@@ -117,7 +310,11 @@ class _ChatScreenState extends State<ChatScreen> {
         'id': '5',
         'sender': 'Nguyễn Văn A',
         'senderId': '1',
-        'content': 'Đã nhận được file thiết kế, cảm ơn bạn!',
+        'content': _t(
+          'Đã nhận được file thiết kế, cảm ơn bạn!',
+          'Design file received, thank you!',
+          '已收到设计文件，谢谢！',
+        ),
         'time': DateTime.now().subtract(const Duration(minutes: 5)),
         'isMine': true,
         'type': 'text',
@@ -126,7 +323,11 @@ class _ChatScreenState extends State<ChatScreen> {
         'id': '6',
         'sender': 'Phạm Thị D',
         'senderId': '4',
-        'content': 'Tôi sẽ điều chỉnh lại phần header theo góp ý.',
+        'content': _t(
+          'Tôi sẽ điều chỉnh lại phần header theo góp ý.',
+          'I will adjust the header based on the feedback.',
+          '我会根据反馈调整顶部区域。',
+        ),
         'time': DateTime.now().subtract(const Duration(minutes: 2)),
         'isMine': false,
         'type': 'text',
@@ -134,7 +335,41 @@ class _ChatScreenState extends State<ChatScreen> {
     ];
   }
 
-  void _sendMessage({String? filePath, String? fileType}) {
+  Future<void> _sendMessage({String? filePath, String? fileType}) async {
+    final content = _messageController.text.trim();
+    if (content.isEmpty && _attachments.isEmpty) return;
+    final projectId = int.tryParse(_selectedProject?['id']?.toString() ?? '');
+    if (projectId == null) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final message = await _chatService.sendMessage(
+        projectId: projectId,
+        content: content.isNotEmpty ? content : 'Đã gửi một file đính kèm',
+        messageType: content.isNotEmpty ? 'text' : 'file',
+      );
+      if (!mounted) return;
+      setState(() {
+        _messages.add(_mapMessage(message));
+        _messageController.clear();
+        _attachments.clear();
+        _isLoading = false;
+      });
+      _scrollToBottom();
+      _loadProjects();
+    } on ApiException catch (err) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+      });
+      _showSnackbar(err.message);
+    }
+  }
+
+  void sendMockMessage({String? filePath, String? fileType}) {
     final content = _messageController.text.trim();
     if (content.isEmpty && _attachments.isEmpty) return;
 
@@ -150,7 +385,13 @@ class _ChatScreenState extends State<ChatScreen> {
         'id': DateTime.now().millisecondsSinceEpoch.toString(),
         'sender': 'Nguyễn Văn A',
         'senderId': '1',
-        'content': content.isNotEmpty ? content : 'Đã gửi một file đính kèm',
+        'content': content.isNotEmpty
+            ? content
+            : _t(
+                'Đã gửi một file đính kèm',
+                'Sent an attachment',
+                '已发送一个附件',
+              ),
         'time': DateTime.now(),
         'isMine': true,
         'type': content.isNotEmpty ? 'text' : 'file',
@@ -179,14 +420,58 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  void _sendBotMessage() {
+    final content = _botMessageController.text.trim();
+    if (content.isEmpty) return;
+
+    setState(() {
+      _botMessages.add({
+        'content': content,
+        'isMine': true,
+        'time': DateTime.now(),
+      });
+      _botMessageController.clear();
+    });
+    _scrollBotToBottom();
+
+    Future.delayed(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      setState(() {
+        _botMessages.add({
+          'content': _t(
+            'Mình đã ghi nhận. Với công việc này, bạn nên kiểm tra deadline, người phụ trách và chia thành các nhiệm vụ nhỏ để dễ theo dõi tiến độ.',
+            'Got it. For this work, you should check the deadline, owner, and break it into smaller tasks to track progress more easily.',
+            '已记录。对于这项工作，你应该检查截止日期、负责人，并拆分成更小的任务以便跟踪进度。',
+          ),
+          'isMine': false,
+          'time': DateTime.now(),
+        });
+      });
+      _scrollBotToBottom();
+    });
+  }
+
+  void _scrollBotToBottom() {
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (_botScrollController.hasClients) {
+        _botScrollController.animateTo(
+          _botScrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
   void _showAttachmentOptions() {
+    final theme = appThemeController;
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.only(
+        decoration: BoxDecoration(
+          color: theme.surfaceColor,
+          borderRadius: const BorderRadius.only(
             topLeft: Radius.circular(30),
             topRight: Radius.circular(30),
           ),
@@ -195,12 +480,12 @@ class _ChatScreenState extends State<ChatScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              'Đính kèm file',
+            Text(
+              _t('Đính kèm file', 'Attach file', '添加附件'),
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF1F2937),
+                color: theme.textColor,
               ),
             ),
             const SizedBox(height: 20),
@@ -209,11 +494,17 @@ class _ChatScreenState extends State<ChatScreen> {
               children: [
                 _buildAttachmentOption(
                   icon: Icons.image_rounded,
-                  label: 'Hình ảnh',
+                  label: _t('Hình ảnh', 'Image', '图片'),
                   color: const Color(0xFF6366F1),
                   onTap: () {
                     Navigator.pop(context);
-                    _showSnackbar('Chọn hình ảnh từ thư viện');
+                    _showSnackbar(
+                      _t(
+                        'Chọn hình ảnh từ thư viện',
+                        'Choose an image from gallery',
+                        '从相册选择图片',
+                      ),
+                    );
                   },
                 ),
                 _buildAttachmentOption(
@@ -222,25 +513,39 @@ class _ChatScreenState extends State<ChatScreen> {
                   color: const Color(0xFFEC4899),
                   onTap: () {
                     Navigator.pop(context);
-                    _showSnackbar('Chọn video từ thư viện');
+                    _showSnackbar(
+                      _t(
+                        'Chọn video từ thư viện',
+                        'Choose a video from gallery',
+                        '从相册选择视频',
+                      ),
+                    );
                   },
                 ),
                 _buildAttachmentOption(
                   icon: Icons.insert_drive_file_rounded,
-                  label: 'Tài liệu',
+                  label: _t('Tài liệu', 'Document', '文档'),
                   color: const Color(0xFFF59E0B),
                   onTap: () {
                     Navigator.pop(context);
-                    _showSnackbar('Chọn tài liệu từ thiết bị');
+                    _showSnackbar(
+                      _t(
+                        'Chọn tài liệu từ thiết bị',
+                        'Choose a document from device',
+                        '从设备选择文档',
+                      ),
+                    );
                   },
                 ),
                 _buildAttachmentOption(
                   icon: Icons.mic_rounded,
-                  label: 'Ghi âm',
+                  label: _t('Ghi âm', 'Record', '录音'),
                   color: const Color(0xFF10B981),
                   onTap: () {
                     Navigator.pop(context);
-                    _showSnackbar('Bắt đầu ghi âm');
+                    _showSnackbar(
+                      _t('Bắt đầu ghi âm', 'Start recording', '开始录音'),
+                    );
                   },
                 ),
               ],
@@ -274,7 +579,7 @@ class _ChatScreenState extends State<ChatScreen> {
           const SizedBox(height: 8),
           Text(
             label,
-            style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+            style: TextStyle(fontSize: 12, color: appThemeController.mutedTextColor),
           ),
         ],
       ),
@@ -296,20 +601,58 @@ class _ChatScreenState extends State<ChatScreen> {
     final diff = now.difference(time);
 
     if (diff.inMinutes < 1) {
-      return 'Vừa xong';
+      return _t('Vừa xong', 'Just now', '刚刚');
     } else if (diff.inHours < 1) {
-      return '${diff.inMinutes} phút';
+      return _t(
+        '${diff.inMinutes} phút',
+        '${diff.inMinutes} min',
+        '${diff.inMinutes} 分钟',
+      );
     } else if (diff.inDays < 1) {
-      return '${diff.inHours} giờ';
+      return _t(
+        '${diff.inHours} giờ',
+        '${diff.inHours} h',
+        '${diff.inHours} 小时',
+      );
     } else {
-      return '${diff.inDays} ngày';
+      return _t(
+        '${diff.inDays} ngày',
+        '${diff.inDays} days',
+        '${diff.inDays} 天',
+      );
+    }
+  }
+
+  String projectLastMessage(Map<String, dynamic> project) {
+    switch (project['id']) {
+      case '1':
+        return _t(
+          'Đã nhận được file thiết kế, cảm ơn bạn!',
+          'Design file received, thank you!',
+          '已收到设计文件，谢谢！',
+        );
+      case '2':
+        return _t(
+          'Khi nào deploy lên production?',
+          'When will we deploy to production?',
+          '什么时候部署到生产环境？',
+        );
+      case '3':
+        return _t(
+          'Model đã đạt accuracy 95%',
+          'The model reached 95% accuracy',
+          '模型准确率已达到 95%',
+        );
+      default:
+        return project['lastMessage']?.toString() ?? '';
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = appThemeController;
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: theme.backgroundColor,
       body: SafeArea(
         child: Column(
           children: [
@@ -318,7 +661,7 @@ class _ChatScreenState extends State<ChatScreen> {
               Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: theme.surfaceColor,
                 borderRadius: const BorderRadius.only(
                   bottomLeft: Radius.circular(24),
                   bottomRight: Radius.circular(24),
@@ -339,23 +682,27 @@ class _ChatScreenState extends State<ChatScreen> {
                     size: 28,
                   ),
                   const SizedBox(width: 12),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Tin nhắn',
+                          _t('Tin nhắn', 'Messages', '消息'),
                           style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFF1F2937),
+                            color: theme.textColor,
                           ),
                         ),
                         Text(
-                          'Nhắn tin theo dự án',
+                          _t(
+                            'Nhắn tin theo dự án',
+                            'Message by project',
+                            '按项目聊天',
+                          ),
                           style: TextStyle(
                             fontSize: 12,
-                            color: Color(0xFF6B7280),
+                            color: theme.mutedTextColor,
                           ),
                         ),
                       ],
@@ -377,124 +724,217 @@ class _ChatScreenState extends State<ChatScreen> {
                 ],
               ),
             ),
-            if (_selectedProject == null) const SizedBox(height: 16),
+            if (_selectedProject == null) ...[
+              const SizedBox(height: 16),
+              _buildMessageModeTabs(),
+              const SizedBox(height: 16),
+            ],
 
             // N?i dung ch?nh
             Expanded(
               child: _selectedProject == null
-                  ? _buildProjectList()
+                  ? (_showChatbot ? _buildChatbot() : _buildProjectList())
                   : _buildChatDetail(),
             ),
           ],
         ),
       ),
-      bottomNavigationBar: _selectedProject == null
+      bottomNavigationBar: widget.showBottomNavigation && _selectedProject == null
           ? _buildBottomNavigationBar()
           : null,
     );
   }
 
   Widget _buildBottomNavigationBar() {
+    return const AppBottomNavigation(
+      currentItem: AppBottomNavItem.messages,
+    );
+  }
+
+  Widget _buildMessageModeTabs() {
+    final theme = appThemeController;
     return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(24),
-          topRight: Radius.circular(24),
-        ),
+        color: theme.surfaceColor,
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withValues(alpha: 0.1),
-            blurRadius: 20,
-            offset: const Offset(0, -4),
+            color: Colors.grey.withValues(alpha: 0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: BottomNavigationBar(
-        currentIndex: 3,
-        onTap: (index) {
-          switch (index) {
-            case 0:
-              Navigator.pushReplacementNamed(context, '/home');
-              break;
-            case 1:
-              Navigator.pushReplacementNamed(context, '/timeline');
-              break;
-            case 2:
-              Navigator.pushReplacementNamed(context, '/projects');
-              break;
-            case 3:
-              break;
-            case 4:
-
-              Navigator.pushReplacementNamed(context, '/profile');
-
-              break;
-          }
-        },
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color(0xFF6366F1),
-        unselectedItemColor: const Color(0xFF9CA3AF),
-        selectedLabelStyle: const TextStyle(
-          fontWeight: FontWeight.w600,
-          fontSize: 11,
-        ),
-        unselectedLabelStyle: const TextStyle(fontSize: 11),
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_rounded),
-            activeIcon: Icon(Icons.home_rounded),
-            label: 'Trang chủ',
+      child: Row(
+        children: [
+          _buildModeTab(
+            icon: Icons.chat_bubble_rounded,
+            label: _t('Tin nhắn', 'Messages', '消息'),
+            selected: !_showChatbot,
+            onTap: () {
+              setState(() {
+                _showChatbot = false;
+              });
+            },
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.calendar_month_rounded),
-            activeIcon: Icon(Icons.calendar_month_rounded),
-            label: 'Lịch',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.folder_rounded),
-            activeIcon: Icon(Icons.folder_rounded),
-            label: 'Dự án',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.chat_rounded),
-            activeIcon: Icon(Icons.chat_rounded),
-            label: 'Tin nhắn',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_rounded),
-            activeIcon: Icon(Icons.person_rounded),
-            label: 'Tôi',
+          _buildModeTab(
+            icon: Icons.smart_toy_rounded,
+            label: 'Chatbot',
+            selected: _showChatbot,
+            onTap: () {
+              setState(() {
+                _showChatbot = true;
+                _selectedProject = null;
+              });
+              _scrollBotToBottom();
+            },
           ),
         ],
       ),
     );
   }
 
+  Widget _buildModeTab({
+    required IconData icon,
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    final theme = appThemeController;
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: selected ? theme.primaryColor : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: selected ? Colors.white : theme.mutedTextColor,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: selected ? Colors.white : theme.textColor,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStateMessage({
+    required IconData icon,
+    required String title,
+    String? actionLabel,
+    VoidCallback? onAction,
+  }) {
+    final theme = appThemeController;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 58, color: theme.mutedTextColor),
+            const SizedBox(height: 14),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: theme.textColor,
+              ),
+            ),
+            if (actionLabel != null && onAction != null) ...[
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: onAction,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: theme.primaryColor,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                child: Text(actionLabel),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildProjectList() {
+    final theme = appThemeController;
+    if (_isLoadingProjects) {
+      return Center(
+        child: CircularProgressIndicator(color: theme.primaryColor),
+      );
+    }
+
+    if (_projectError != null) {
+      return _buildStateMessage(
+        icon: Icons.error_outline_rounded,
+        title: _projectError!,
+        actionLabel: _t('Thử lại', 'Retry', '重试'),
+        onAction: _loadProjects,
+      );
+    }
+
+    if (_projects.isEmpty) {
+      return _buildStateMessage(
+        icon: Icons.forum_outlined,
+        title: _t(
+          'Chưa có dự án để nhắn tin',
+          'No projects to message',
+          '暂无可聊天项目',
+        ),
+      );
+    }
+
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       itemCount: _projects.length,
       itemBuilder: (context, index) {
         final project = _projects[index];
         final color = parseHexColor(project['color']);
-        final onlineCount = (project['members'] as List)
-            .where((m) => m['online'])
-            .length;
+        final memberCount = int.tryParse(
+              project['memberCount']?.toString() ??
+                  project['member_count']?.toString() ??
+                  '',
+            ) ??
+            ((project['members'] is List) ? (project['members'] as List).length : 0);
 
         return GestureDetector(
           onTap: () {
             setState(() {
               _selectedProject = project;
-              _loadMessages();
             });
+            _loadMessages();
             _scrollToBottom();
           },
           child: Container(
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: theme.surfaceColor,
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(
@@ -526,10 +966,10 @@ class _ChatScreenState extends State<ChatScreen> {
                           Expanded(
                             child: Text(
                               project['name'],
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
-                                color: Color(0xFF1F2937),
+                                color: theme.textColor,
                               ),
                             ),
                           ),
@@ -556,12 +996,13 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        project['lastMessage'],
+                        project['lastMessage']?.toString() ??
+                            _t('Chưa có tin nhắn', 'No messages yet', '暂无消息'),
                         style: TextStyle(
                           fontSize: 13,
                           color: project['unreadCount'] > 0
-                              ? const Color(0xFF1F2937)
-                              : const Color(0xFF6B7280),
+                              ? theme.textColor
+                              : theme.mutedTextColor,
                           fontWeight: project['unreadCount'] > 0
                               ? FontWeight.w600
                               : FontWeight.w400,
@@ -575,22 +1016,26 @@ class _ChatScreenState extends State<ChatScreen> {
                           Icon(
                             Icons.people_rounded,
                             size: 14,
-                            color: const Color(0xFF6B7280),
+                            color: theme.mutedTextColor,
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            '$onlineCount/${project['members'].length} online',
-                            style: const TextStyle(
+                            _t(
+                              '$memberCount thành viên',
+                              '$memberCount members',
+                              '$memberCount 名成员',
+                            ),
+                            style: TextStyle(
                               fontSize: 11,
-                              color: Color(0xFF6B7280),
+                              color: theme.mutedTextColor,
                             ),
                           ),
                           const SizedBox(width: 12),
                           Text(
                             _formatTime(project['lastTime']),
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11,
-                              color: Color(0xFF9CA3AF),
+                              color: theme.mutedTextColor,
                             ),
                           ),
                         ],
@@ -611,12 +1056,167 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Widget _buildChatbot() {
+    final theme = appThemeController;
+    return Column(
+      children: [
+        Expanded(
+          child: ListView.builder(
+            controller: _botScrollController,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+            itemCount: _botMessages.length,
+            itemBuilder: (context, index) {
+              final message = _botMessages[index];
+              final isMine = message['isMine'] == true;
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  mainAxisAlignment: isMine
+                      ? MainAxisAlignment.end
+                      : MainAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (!isMine)
+                      const CircleAvatar(
+                        radius: 17,
+                        backgroundColor: Color(0xFFEDE9FE),
+                        child: Icon(
+                          Icons.smart_toy_rounded,
+                          color: Color(0xFF6366F1),
+                          size: 18,
+                        ),
+                      ),
+                    if (!isMine) const SizedBox(width: 8),
+                    Flexible(
+                      child: Container(
+                        padding: const EdgeInsets.all(13),
+                        decoration: BoxDecoration(
+                          color: isMine ? const Color(0xFF6366F1) : Colors.white,
+                          borderRadius: BorderRadius.only(
+                            topLeft: Radius.circular(isMine ? 16 : 6),
+                            topRight: Radius.circular(isMine ? 6 : 16),
+                            bottomLeft: const Radius.circular(16),
+                            bottomRight: const Radius.circular(16),
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.grey.withValues(alpha: 0.06),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Text(
+                          message['content'],
+                          style: TextStyle(
+                            fontSize: 14,
+                            height: 1.4,
+                            color: isMine
+                                ? Colors.white
+                                : const Color(0xFF1F2937),
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (isMine) const SizedBox(width: 8),
+                    if (isMine)
+                      const CircleAvatar(
+                        radius: 17,
+                        backgroundColor: Color(0xFF6366F1),
+                        child: Text(
+                          'A',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: theme.surfaceColor,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 10,
+                offset: const Offset(0, -2),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: theme.backgroundColor,
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: TextField(
+                    controller: _botMessageController,
+                    decoration: InputDecoration(
+                      hintText: _t(
+                        'Hỏi chatbot về công việc...',
+                        'Ask the chatbot about work...',
+                        '向聊天机器人询问工作...',
+                      ),
+                      hintStyle: TextStyle(color: theme.mutedTextColor),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                    ),
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: theme.textColor,
+                    ),
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => _sendBotMessage(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                  ),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: IconButton(
+                  onPressed: _sendBotMessage,
+                  icon: const Icon(
+                    Icons.send_rounded,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildChatDetail() {
+    final theme = appThemeController;
     final project = _selectedProject!;
     final color = parseHexColor(project['color']);
-    final onlineCount = (project['members'] as List)
-        .where((m) => m['online'])
-        .length;
+    final memberCount = int.tryParse(
+          project['memberCount']?.toString() ??
+              project['member_count']?.toString() ??
+              '',
+        ) ??
+        ((project['members'] is List) ? (project['members'] as List).length : 0);
 
     return Column(
       children: [
@@ -624,7 +1224,7 @@ class _ChatScreenState extends State<ChatScreen> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: theme.surfaceColor,
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.04),
@@ -641,9 +1241,9 @@ class _ChatScreenState extends State<ChatScreen> {
                     _selectedProject = null;
                   });
                 },
-                child: const Icon(
+                child: Icon(
                   Icons.arrow_back_ios_new_rounded,
-                  color: Color(0xFF1F2937),
+                  color: theme.textColor,
                   size: 20,
                 ),
               ),
@@ -664,14 +1264,18 @@ class _ChatScreenState extends State<ChatScreen> {
                   children: [
                     Text(
                       project['name'],
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF1F2937),
+                        color: theme.textColor,
                       ),
                     ),
                     Text(
-                      '$onlineCount thành viên online',
+                      _t(
+                        '$memberCount thành viên',
+                        '$memberCount members',
+                        '$memberCount 名成员',
+                      ),
                       style: const TextStyle(
                         fontSize: 12,
                         color: Color(0xFF10B981),
@@ -684,12 +1288,12 @@ class _ChatScreenState extends State<ChatScreen> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF3F4F6),
+                  color: theme.backgroundColor,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.info_outline_rounded,
-                  color: Color(0xFF6B7280),
+                  color: theme.mutedTextColor,
                   size: 22,
                 ),
               ),
@@ -699,7 +1303,27 @@ class _ChatScreenState extends State<ChatScreen> {
 
         // Danh s?ch tin nh?n
         Expanded(
-          child: ListView.builder(
+          child: _isLoadingMessages
+              ? Center(
+                  child: CircularProgressIndicator(color: theme.primaryColor),
+                )
+              : _messageError != null
+                  ? _buildStateMessage(
+                      icon: Icons.error_outline_rounded,
+                      title: _messageError!,
+                      actionLabel: _t('Thử lại', 'Retry', '重试'),
+                      onAction: _loadMessages,
+                    )
+                  : _messages.isEmpty
+                      ? _buildStateMessage(
+                          icon: Icons.chat_bubble_outline_rounded,
+                          title: _t(
+                            'Chưa có tin nhắn',
+                            'No messages yet',
+                            '暂无消息',
+                          ),
+                        )
+                      : ListView.builder(
             controller: _scrollController,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             itemCount: _messages.length,
@@ -721,7 +1345,9 @@ class _ChatScreenState extends State<ChatScreen> {
                         radius: 16,
                         backgroundColor: const Color(0xFF8B5CF6),
                         child: Text(
-                          message['sender'][0],
+                          (message['sender']?.toString().isNotEmpty ?? false)
+                              ? message['sender'].toString()[0].toUpperCase()
+                              : '?',
                           style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
@@ -741,9 +1367,9 @@ class _ChatScreenState extends State<ChatScreen> {
                               padding: const EdgeInsets.only(bottom: 4),
                               child: Text(
                                 message['sender'],
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 11,
-                                  color: Color(0xFF6B7280),
+                                  color: theme.mutedTextColor,
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
@@ -753,7 +1379,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             decoration: BoxDecoration(
                               color: isMine
                                   ? const Color(0xFF6366F1)
-                                  : Colors.white,
+                                  : theme.surfaceColor,
                               borderRadius: BorderRadius.only(
                                 topLeft: Radius.circular(isMine ? 16 : 4),
                                 topRight: Radius.circular(isMine ? 4 : 16),
@@ -776,7 +1402,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                     width: 200,
                                     height: 150,
                                     decoration: BoxDecoration(
-                                      color: Colors.grey.shade200,
+                                      color: theme.backgroundColor,
                                       borderRadius: BorderRadius.circular(8),
                                       image: const DecorationImage(
                                         image: NetworkImage(
@@ -794,7 +1420,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                       fontSize: 14,
                                       color: isMine
                                           ? Colors.white
-                                          : const Color(0xFF1F2937),
+                                          : theme.textColor,
                                       height: 1.4,
                                     ),
                                   ),
@@ -805,9 +1431,9 @@ class _ChatScreenState extends State<ChatScreen> {
                             padding: const EdgeInsets.only(top: 4),
                             child: Text(
                               _formatTime(time),
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 10,
-                                color: Color(0xFF9CA3AF),
+                                color: theme.mutedTextColor,
                               ),
                             ),
                           ),
@@ -839,7 +1465,7 @@ class _ChatScreenState extends State<ChatScreen> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: theme.surfaceColor,
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.04),
@@ -853,9 +1479,9 @@ class _ChatScreenState extends State<ChatScreen> {
               // N?t ??nh k?m
               IconButton(
                 onPressed: _showAttachmentOptions,
-                icon: const Icon(
+                icon: Icon(
                   Icons.attach_file_rounded,
-                  color: Color(0xFF6B7280),
+                  color: theme.mutedTextColor,
                   size: 26,
                 ),
               ),
@@ -863,22 +1489,27 @@ class _ChatScreenState extends State<ChatScreen> {
               Expanded(
                 child: Container(
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF3F4F6),
+                    color: theme.backgroundColor,
                     borderRadius: BorderRadius.circular(24),
                   ),
                   child: TextField(
                     controller: _messageController,
-                    decoration: const InputDecoration(
-                      hintText: 'Nhập tin nhắn...',
+                    decoration: InputDecoration(
+                      hintText: _t(
+                        'Nhập tin nhắn...',
+                        'Type a message...',
+                        '输入消息...',
+                      ),
+                      hintStyle: TextStyle(color: theme.mutedTextColor),
                       border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(
+                      contentPadding: const EdgeInsets.symmetric(
                         horizontal: 16,
                         vertical: 8,
                       ),
                     ),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 15,
-                      color: Color(0xFF1F2937),
+                      color: theme.textColor,
                     ),
                     textInputAction: TextInputAction.send,
                     onSubmitted: (_) => _sendMessage(),

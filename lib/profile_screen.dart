@@ -1,33 +1,120 @@
 ﻿import 'package:flutter/material.dart';
 
+import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'app_theme_controller.dart';
 import 'feedback_screen.dart';
+import 'services/auth_service.dart';
+import 'services/profile_service.dart';
 import 'settings_screen.dart';
+import 'widgets/app_bottom_navigation.dart';
+
+enum ProfileLanguage { vietnamese, english, chinese }
+
+String _profileText(ProfileLanguage language, String vi, String en, String zh) {
+  switch (language) {
+    case ProfileLanguage.vietnamese:
+      return vi;
+    case ProfileLanguage.english:
+      return en;
+    case ProfileLanguage.chinese:
+      return zh;
+  }
+}
+
+Future<ProfileLanguage> _loadProfileLanguage() async {
+  final prefs = await SharedPreferences.getInstance();
+  final rawValue = prefs.getString('app_language');
+  return ProfileLanguage.values.firstWhere(
+    (language) => language.name == rawValue,
+    orElse: () => ProfileLanguage.vietnamese,
+  );
+}
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  final bool showBottomNavigation;
+
+  const ProfileScreen({super.key, this.showBottomNavigation = true});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final Map<String, dynamic> _userInfo = {
+  final ProfileService _profileService = ProfileService();
+  ProfileLanguage _language = ProfileLanguage.vietnamese;
+  Map<String, dynamic> _userInfo = {
     'fullName': 'Nguyễn Văn A',
     'email': 'nguyenvana@email.com',
+    'avatar': null,
     'phone': '0987 654 321',
-    'birthday': '15/03/1995',
+    'birthday': '',
     'gender': 'Nam',
-    'address': '123 Đường ABC, Quận 1, TP. Hồ Chí Minh',
+    'address': '',
     'joinDate': '01/01/2020',
     'skills': ['Flutter', 'React Native', 'Node.js', 'MongoDB'],
     'projects': 12,
     'tasksCompleted': 156,
   };
+  bool _isLoadingProfile = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLanguage();
+    _loadProfile();
+  }
+
+  String _t(String vi, String en, String zh) {
+    return _profileText(_language, vi, en, zh);
+  }
+
+  Future<void> _loadLanguage() async {
+    final language = await _loadProfileLanguage();
+    if (!mounted) return;
+    setState(() {
+      _language = language;
+    });
+  }
+
+  Future<void> _loadProfile() async {
+    setState(() {
+      _isLoadingProfile = true;
+    });
+
+    try {
+      final profile = await _profileService.getProfile();
+      if (!mounted) return;
+      setState(() {
+        _userInfo = {
+          ..._userInfo,
+          'id': profile['id'],
+          'fullName': profile['name']?.toString() ?? '',
+          'email': profile['email']?.toString() ?? '',
+          'avatar': profile['avatar']?.toString(),
+          'birthday': profile['birthday']?.toString() ?? '',
+          'address': profile['address']?.toString() ?? '',
+        };
+      });
+    } on ApiException catch (err) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(err.message)),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingProfile = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: appThemeController.backgroundColor,
       body: SafeArea(
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
@@ -40,8 +127,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   children: [
                     _buildMenuItem(
                       icon: Icons.feedback_rounded,
-                      title: 'Hòm thư góp ý',
-                      subtitle: 'Gửi ý kiến đóng góp cho chúng tôi',
+                      title: _t('Hòm thư góp ý', 'Feedback inbox', '反馈信箱'),
+                      subtitle: _t(
+                        'Gửi ý kiến đóng góp cho chúng tôi',
+                        'Send us your feedback',
+                        '向我们发送反馈',
+                      ),
                       color: const Color(0xFFF59E0B),
                       onTap: () {
                         Navigator.push(
@@ -55,50 +146,64 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     const SizedBox(height: 8),
                     _buildMenuItem(
                       icon: Icons.settings_rounded,
-                      title: 'Cài đặt ứng dụng',
-                      subtitle: 'Tùy chỉnh giao diện và thông báo',
+                      title: _t('Cài đặt ứng dụng', 'App settings', '应用设置'),
+                      subtitle: _t(
+                        'Tùy chỉnh giao diện và thông báo',
+                        'Customize appearance and notifications',
+                        '自定义外观和通知',
+                      ),
                       color: const Color(0xFF10B981),
-                      onTap: () {
-                        Navigator.push(
+                      onTap: () async {
+                        await Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (context) => const SettingsScreen(),
                           ),
                         );
+                        if (mounted) _loadLanguage();
                       },
                     ),
                     const SizedBox(height: 8),
                     _buildMenuItem(
                       icon: Icons.description_rounded,
-                      title: 'CV điện tử',
-                      subtitle: 'Tạo và quản lý CV của bạn',
+                      title: _t('CV điện tử', 'Digital CV', '电子简历'),
+                      subtitle: _t(
+                        'Tạo và quản lý CV của bạn',
+                        'Create and manage your CV',
+                        '创建和管理你的简历',
+                      ),
                       color: const Color(0xFFEC4899),
                       isLocked: true,
                       onTap: () {
-                        _showLockedFeatureDialog('CV điện tử');
+                        _showLockedFeatureDialog(
+                          _t('CV điện tử', 'Digital CV', '电子简历'),
+                        );
                       },
                     ),
                     const SizedBox(height: 8),
                     _buildMenuItem(
                       icon: Icons.group_add_rounded,
-                      title: 'Giới thiệu bạn bè',
-                      subtitle: 'Mời bạn bè, người quen sử dụng ứng dụng',
+                      title: _t('Giới thiệu bạn bè', 'Invite friends', '邀请朋友'),
+                      subtitle: _t(
+                        'Mời bạn bè, người quen sử dụng ứng dụng',
+                        'Invite friends and contacts to use the app',
+                        '邀请朋友和熟人使用应用',
+                      ),
                       color: const Color(0xFF3B82F6),
                       onTap: _showInviteFriendsDialog,
                     ),
                     const SizedBox(height: 8),
                     _buildMenuItem(
                       icon: Icons.logout_rounded,
-                      title: 'Đăng xuất',
-                      subtitle: 'Đăng xuất khỏi tài khoản',
+                      title: _t('Đăng xuất', 'Log out', '退出登录'),
+                      subtitle: _t(
+                        'Đăng xuất khỏi tài khoản',
+                        'Sign out of your account',
+                        '退出当前账户',
+                      ),
                       color: const Color(0xFFEF4444),
                       isLogout: true,
                       onTap: _showLogoutDialog,
-                    ),
-                    const SizedBox(height: 20),
-                    const Text(
-                      'Version 1.0.0',
-                      style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF)),
                     ),
                     const SizedBox(height: 20),
                   ],
@@ -108,7 +213,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ),
       ),
-      bottomNavigationBar: _buildBottomNavigationBar(),
+      bottomNavigationBar:
+          widget.showBottomNavigation ? _buildBottomNavigationBar() : null,
     );
   }
 
@@ -132,13 +238,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
       child: GestureDetector(
-        onTap: () {
-          Navigator.push(
+        onTap: () async {
+          await Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => ProfileDetailScreen(userInfo: _userInfo),
             ),
           );
+          if (mounted) _loadProfile();
         },
         child: Row(
           children: [
@@ -156,16 +263,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ],
               ),
-              child: Center(
-                child: Text(
-                  _userInfo['fullName'][0].toUpperCase(),
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF6366F1),
-                  ),
-                ),
-              ),
+              child: _buildProfileAvatarContent(size: 56, fontSize: 24),
             ),
             const SizedBox(width: 20),
             Expanded(
@@ -174,7 +272,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    _userInfo['fullName'],
+                    _userInfo['fullName']?.toString() ?? '',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -185,7 +283,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    _userInfo['email'],
+                    _userInfo['email']?.toString() ?? '',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -202,13 +300,61 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 color: Colors.white.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(
-                Icons.arrow_forward_ios_rounded,
-                color: Colors.white,
-                size: 16,
-              ),
+              child: _isLoadingProfile
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(
+                      Icons.arrow_forward_ios_rounded,
+                      color: Colors.white,
+                      size: 16,
+                    ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProfileAvatarContent({
+    required double size,
+    required double fontSize,
+  }) {
+    final avatarUrl = _profileService.buildAvatarUrl(
+      _userInfo['avatar']?.toString(),
+    );
+    if (avatarUrl != null) {
+      return ClipOval(
+        child: Image.network(
+          avatarUrl,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return _buildAvatarLetter(fontSize);
+          },
+        ),
+      );
+    }
+
+    return _buildAvatarLetter(fontSize);
+  }
+
+  Widget _buildAvatarLetter(double fontSize) {
+    final name = _userInfo['fullName']?.toString().trim() ?? '';
+    final letter = name.isNotEmpty ? name[0].toUpperCase() : 'U';
+    return Center(
+      child: Text(
+        letter,
+        style: TextStyle(
+          fontSize: fontSize,
+          fontWeight: FontWeight.bold,
+          color: const Color(0xFF6366F1),
         ),
       ),
     );
@@ -223,12 +369,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     bool isLocked = false,
     bool isLogout = false,
   }) {
+    final theme = appThemeController;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: theme.surfaceColor,
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
@@ -265,7 +412,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             fontWeight: FontWeight.w600,
                             color: isLogout
                                 ? const Color(0xFFEF4444)
-                                : const Color(0xFF1F2937),
+                                : theme.textColor,
                           ),
                         ),
                       ),
@@ -280,9 +427,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             color: const Color(0xFFF3F4F6),
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: const Text(
-                            'Sắp ra mắt',
-                            style: TextStyle(
+                          child: Text(
+                            _t('Sắp ra mắt', 'Soon', '即将推出'),
+                            style: const TextStyle(
                               fontSize: 9,
                               color: Color(0xFF6B7280),
                               fontWeight: FontWeight.w500,
@@ -301,7 +448,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       fontSize: 12,
                       color: isLogout
                           ? const Color(0xFFEF4444).withValues(alpha: 0.7)
-                          : const Color(0xFF6B7280),
+                          : theme.mutedTextColor,
                     ),
                   ),
                 ],
@@ -313,7 +460,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   : Icons.chevron_right_rounded,
               color: isLogout
                   ? const Color(0xFFEF4444).withValues(alpha: 0.5)
-                  : const Color(0xFF9CA3AF),
+                  : theme.mutedTextColor,
               size: 20,
             ),
           ],
@@ -323,93 +470,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildBottomNavigationBar() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(24),
-          topRight: Radius.circular(24),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withValues(alpha: 0.1),
-            blurRadius: 20,
-            offset: const Offset(0, -4),
-          ),
-        ],
-      ),
-      child: BottomNavigationBar(
-        currentIndex: 4,
-        onTap: (index) {
-          switch (index) {
-            case 0:
-              Navigator.pushReplacementNamed(context, '/home');
-              break;
-            case 1:
-              Navigator.pushReplacementNamed(context, '/timeline');
-              break;
-            case 2:
-              Navigator.pushReplacementNamed(context, '/projects');
-              break;
-            case 3:
-              Navigator.pushReplacementNamed(context, '/chat');
-              break;
-            case 4:
-              break;
-          }
-        },
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color(0xFF6366F1),
-        unselectedItemColor: const Color(0xFF9CA3AF),
-        selectedLabelStyle: const TextStyle(
-          fontWeight: FontWeight.w600,
-          fontSize: 11,
-        ),
-        unselectedLabelStyle: const TextStyle(fontSize: 11),
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_rounded),
-            activeIcon: Icon(Icons.home_rounded),
-            label: 'Trang chủ',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.calendar_month_rounded),
-            activeIcon: Icon(Icons.calendar_month_rounded),
-            label: 'Lịch',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.folder_rounded),
-            activeIcon: Icon(Icons.folder_rounded),
-            label: 'Dự án',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.chat_rounded),
-            activeIcon: Icon(Icons.chat_rounded),
-            label: 'Tin nhắn',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_rounded),
-            activeIcon: Icon(Icons.person_rounded),
-            label: 'Tôi',
-          ),
-        ],
-      ),
+    return const AppBottomNavigation(
+      currentItem: AppBottomNavItem.me,
     );
   }
 
   void _showLogoutDialog() {
+    final theme = appThemeController;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: theme.surfaceColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Đăng xuất'),
-        content: const Text(
-          'Bạn có chắc chắn muốn đăng xuất khỏi tài khoản?',
+        title: Text(
+          _t('Đăng xuất', 'Log out', '退出登录'),
+          style: TextStyle(color: theme.textColor),
+        ),
+        content: Text(
+          _t(
+            'Bạn có chắc chắn muốn đăng xuất khỏi tài khoản?',
+            'Are you sure you want to sign out?',
+            '你确定要退出登录吗？',
+          ),
+          style: TextStyle(color: theme.mutedTextColor),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Hủy'),
+            child: Text(_t('Hủy', 'Cancel', '取消')),
           ),
           TextButton(
             onPressed: () {
@@ -420,15 +508,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 (route) => false,
               );
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Đã đăng xuất thành công'),
-                  backgroundColor: Color(0xFF6366F1),
+                SnackBar(
+                  content: Text(
+                    _t(
+                      'Đã đăng xuất thành công',
+                      'Signed out successfully',
+                      '已成功退出登录',
+                    ),
+                  ),
+                  backgroundColor: theme.primaryColor,
                 ),
               );
             },
-            child: const Text(
-              'Đăng xuất',
-              style: TextStyle(
+            child: Text(
+              _t('Đăng xuất', 'Log out', '退出登录'),
+              style: const TextStyle(
                 color: Color(0xFFEF4444),
                 fontWeight: FontWeight.w600,
               ),
@@ -440,16 +534,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _showLockedFeatureDialog(String featureName) {
+    final theme = appThemeController;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: theme.surfaceColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(featureName),
-        content: const Text('Tính năng này đang được phát triển!'),
+        title: Text(featureName, style: TextStyle(color: theme.textColor)),
+        content: Text(
+          _t(
+            'Tính năng này đang được phát triển!',
+            'This feature is still in development.',
+            '此功能正在开发中。',
+          ),
+          style: TextStyle(color: theme.mutedTextColor),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Đã hiểu'),
+            child: Text(_t('Đã hiểu', 'Got it', '知道了')),
           ),
         ],
       ),
@@ -457,32 +560,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _showInviteFriendsDialog() {
+    final theme = appThemeController;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: theme.surfaceColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Giới thiệu bạn bè'),
-        content: const Text(
-          'Hãy giới thiệu ứng dụng quản lý dự án này cho bạn bè, đồng nghiệp hoặc người quen cùng sử dụng.',
+        title: Text(
+          _t('Giới thiệu bạn bè', 'Invite friends', '邀请朋友'),
+          style: TextStyle(color: theme.textColor),
+        ),
+        content: Text(
+          _t(
+            'Hãy giới thiệu ứng dụng quản lý dự án này cho bạn bè, đồng nghiệp hoặc người quen cùng sử dụng.',
+            'Share this project management app with friends, colleagues, or people you know.',
+            '把这个项目管理应用分享给朋友、同事或熟人一起使用。',
+          ),
+          style: TextStyle(color: theme.mutedTextColor),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Đóng'),
+            child: Text(_t('Đóng', 'Close', '关闭')),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Đã sẵn sàng chia sẻ lời mời'),
-                  backgroundColor: Color(0xFF6366F1),
+                SnackBar(
+                  content: Text(
+                    _t(
+                      'Đã sẵn sàng chia sẻ lời mời',
+                      'Invitation is ready to share',
+                      '邀请已准备好分享',
+                    ),
+                  ),
+                  backgroundColor: theme.primaryColor,
                 ),
               );
             },
-            child: const Text(
-              'Chia sẻ',
-              style: TextStyle(fontWeight: FontWeight.w600),
+            child: Text(
+              _t('Chia sẻ', 'Share', '分享'),
+              style: const TextStyle(fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -502,27 +621,43 @@ class ProfileDetailScreen extends StatefulWidget {
 
 class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
   late Map<String, dynamic> _userInfo;
+  final ProfileService _profileService = ProfileService();
+  final ImagePicker _imagePicker = ImagePicker();
+  ProfileLanguage _language = ProfileLanguage.vietnamese;
 
   @override
   void initState() {
     super.initState();
     _userInfo = Map<String, dynamic>.from(widget.userInfo);
+    _loadLanguage();
+  }
+
+  String _t(String vi, String en, String zh) {
+    return _profileText(_language, vi, en, zh);
+  }
+
+  Future<void> _loadLanguage() async {
+    final language = await _loadProfileLanguage();
+    if (!mounted) return;
+    setState(() {
+      _language = language;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: appThemeController.backgroundColor,
       appBar: AppBar(
-        title: const Text('Thông tin cá nhân'),
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF1F2937),
+        title: Text(_t('Thông tin cá nhân', 'Personal information', '个人信息')),
+        backgroundColor: appThemeController.surfaceColor,
+        foregroundColor: appThemeController.textColor,
         elevation: 0,
         actions: [
           IconButton(
             onPressed: _showEditProfileSheet,
             icon: const Icon(Icons.edit_rounded),
-            tooltip: 'Cập nhật thông tin',
+            tooltip: _t('Cập nhật thông tin', 'Update information', '更新信息'),
           ),
         ],
       ),
@@ -530,23 +665,12 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
         padding: const EdgeInsets.all(20),
         children: [
           Center(
-            child: CircleAvatar(
-              radius: 44,
-              backgroundColor: const Color(0xFF6366F1),
-              child: Text(
-                _avatarLetter,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 34,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
+            child: _buildDetailAvatar(radius: 44, fontSize: 34),
           ),
           const SizedBox(height: 20),
           _ProfileInfoTile(
             icon: Icons.person_rounded,
-            label: 'Họ tên',
+            label: _t('Họ tên', 'Full name', '姓名'),
             value: _userInfo['fullName']?.toString() ?? '',
           ),
           _ProfileInfoTile(
@@ -556,17 +680,17 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
           ),
           _ProfileInfoTile(
             icon: Icons.phone_rounded,
-            label: 'Số điện thoại',
+            label: _t('Số điện thoại', 'Phone number', '电话号码'),
             value: _userInfo['phone']?.toString() ?? '',
           ),
           _ProfileInfoTile(
             icon: Icons.cake_rounded,
-            label: 'Ngày sinh',
+            label: _t('Ngày sinh', 'Birthday', '生日'),
             value: _userInfo['birthday']?.toString() ?? '',
           ),
           _ProfileInfoTile(
             icon: Icons.location_on_rounded,
-            label: 'Địa chỉ',
+            label: _t('Địa chỉ', 'Address', '地址'),
             value: _userInfo['address']?.toString() ?? '',
           ),
         ],
@@ -579,7 +703,52 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
     return name.isNotEmpty ? name[0].toUpperCase() : 'U';
   }
 
+  Widget _buildDetailAvatar({
+    required double radius,
+    required double fontSize,
+  }) {
+    final avatarUrl = _profileService.buildAvatarUrl(
+      _userInfo['avatar']?.toString(),
+    );
+
+    if (avatarUrl != null) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: const Color(0xFF6366F1),
+        child: ClipOval(
+          child: Image.network(
+            avatarUrl,
+            width: radius * 2,
+            height: radius * 2,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              return _buildDetailAvatarLetter(fontSize);
+            },
+          ),
+        ),
+      );
+    }
+
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: const Color(0xFF6366F1),
+      child: _buildDetailAvatarLetter(fontSize),
+    );
+  }
+
+  Widget _buildDetailAvatarLetter(double fontSize) {
+    return Text(
+      _avatarLetter,
+      style: TextStyle(
+        color: Colors.white,
+        fontSize: fontSize,
+        fontWeight: FontWeight.bold,
+      ),
+    );
+  }
+
   void _showEditProfileSheet() {
+    final theme = appThemeController;
     final fullNameController = TextEditingController(
       text: _userInfo['fullName']?.toString() ?? '',
     );
@@ -595,11 +764,10 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
     final addressController = TextEditingController(
       text: _userInfo['address']?.toString() ?? '',
     );
-    final avatarController = TextEditingController(
-      text: _userInfo['avatarUrl']?.toString() ?? '',
-    );
+    String? selectedAvatarPath = _userInfo['avatarPath']?.toString();
+    var isSheetActive = true;
 
-    showModalBottomSheet(
+    showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -610,82 +778,120 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
           ),
           child: Container(
             padding: const EdgeInsets.all(20),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            decoration: BoxDecoration(
+              color: theme.surfaceColor,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
             ),
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Cập nhật thông tin',
+                  Text(
+                    _t('Cập nhật thông tin', 'Update information', '更新信息'),
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFF1F2937),
+                      color: theme.textColor,
                     ),
                   ),
                   const SizedBox(height: 16),
-                  Center(
-                    child: Stack(
-                      children: [
-                        CircleAvatar(
-                          radius: 38,
-                          backgroundColor: const Color(0xFF6366F1),
-                          child: Text(
-                            fullNameController.text.trim().isNotEmpty
-                                ? fullNameController.text.trim()[0].toUpperCase()
-                                : 'U',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
+                  StatefulBuilder(
+                    builder: (context, setSheetState) {
+                      return Column(
+                        children: [
+                          Center(
+                            child: GestureDetector(
+                              onTap: () async {
+                                final pickedImage =
+                                    await _imagePicker.pickImage(
+                                  source: ImageSource.gallery,
+                                  imageQuality: 85,
+                                );
+                                if (pickedImage == null || !isSheetActive) {
+                                  return;
+                                }
+                                setSheetState(() {
+                                  selectedAvatarPath = pickedImage.path;
+                                });
+                              },
+                              child: Stack(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 38,
+                                    backgroundColor: const Color(0xFF6366F1),
+                                    child: Text(
+                                      fullNameController.text.trim().isNotEmpty
+                                          ? fullNameController.text
+                                              .trim()[0]
+                                              .toUpperCase()
+                                          : 'U',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 28,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                  Positioned(
+                                    right: 0,
+                                    bottom: 0,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(6),
+                                      decoration: BoxDecoration(
+                                        color: theme.backgroundColor,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Icon(
+                                        Icons.camera_alt_rounded,
+                                        size: 18,
+                                        color: theme.primaryColor,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                        Positioned(
-                          right: 0,
-                          bottom: 0,
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: const BoxDecoration(
-                              color: Colors.white,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.camera_alt_rounded,
-                              size: 18,
-                              color: Color(0xFF6366F1),
+                          const SizedBox(height: 8),
+                          Text(
+                            selectedAvatarPath == null
+                                ? _t(
+                                    'Nhấn vào ảnh đại diện để chọn ảnh',
+                                    'Tap the avatar to choose an image',
+                                    '点击头像选择图片',
+                                  )
+                                : _t(
+                                    'Đã chọn ảnh đại diện',
+                                    'Avatar image selected',
+                                    '已选择头像图片',
+                                  ),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: theme.mutedTextColor,
                             ),
                           ),
-                        ),
-                      ],
-                    ),
+                        ],
+                      );
+                    },
                   ),
                   const SizedBox(height: 16),
-                  _EditProfileField(
-                    controller: avatarController,
-                    label: 'Avatar',
-                    hintText: 'Nhập link ảnh đại diện hoặc để trống',
-                  ),
                   _EditProfileField(
                     controller: fullNameController,
-                    label: 'Họ tên',
+                    label: _t('Họ tên', 'Full name', '姓名'),
                   ),
                   _EditProfileField(controller: emailController, label: 'Email'),
                   _EditProfileField(
                     controller: phoneController,
-                    label: 'Số điện thoại',
+                    label: _t('Số điện thoại', 'Phone number', '电话号码'),
                   ),
                   _EditProfileField(
                     controller: birthdayController,
-                    label: 'Ngày sinh',
+                    label: _t('Ngày sinh', 'Birthday', '生日'),
                   ),
                   _EditProfileField(
                     controller: addressController,
-                    label: 'Địa chỉ',
+                    label: _t('Địa chỉ', 'Address', '地址'),
                     maxLines: 2,
                   ),
                   const SizedBox(height: 12),
@@ -694,36 +900,27 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
                     height: 50,
                     child: ElevatedButton(
                       onPressed: () {
-                        setState(() {
-                          _userInfo = {
-                            ..._userInfo,
-                            'fullName': fullNameController.text.trim(),
-                            'email': emailController.text.trim(),
-                            'phone': phoneController.text.trim(),
-                            'birthday': birthdayController.text.trim(),
-                            'address': addressController.text.trim(),
-                            'avatarUrl': avatarController.text.trim(),
-                          };
+                        Navigator.pop(context, {
+                          ..._userInfo,
+                          'fullName': fullNameController.text.trim(),
+                          'email': emailController.text.trim(),
+                          'phone': phoneController.text.trim(),
+                          'birthday': birthdayController.text.trim(),
+                          'address': addressController.text.trim(),
+                          'avatarPath': selectedAvatarPath,
                         });
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Đã cập nhật thông tin'),
-                            backgroundColor: Color(0xFF10B981),
-                          ),
-                        );
                       },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF6366F1),
+                        backgroundColor: theme.primaryColor,
                         foregroundColor: Colors.white,
                         elevation: 0,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      child: const Text(
-                        'Lưu thay đổi',
-                        style: TextStyle(
+                      child: Text(
+                        _t('Lưu thay đổi', 'Save changes', '保存更改'),
+                        style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
                         ),
@@ -736,13 +933,24 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
           ),
         );
       },
-    ).whenComplete(() {
-      fullNameController.dispose();
-      emailController.dispose();
-      phoneController.dispose();
-      birthdayController.dispose();
-      addressController.dispose();
-      avatarController.dispose();
+    ).then((updatedInfo) {
+      isSheetActive = false;
+      if (!mounted || updatedInfo == null) return;
+      setState(() {
+        _userInfo = updatedInfo;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _t(
+              'Đã cập nhật thông tin',
+              'Information updated',
+              '信息已更新',
+            ),
+          ),
+          backgroundColor: Color(0xFF10B981),
+        ),
+      );
     });
   }
 }
@@ -750,39 +958,43 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
 class _EditProfileField extends StatelessWidget {
   final TextEditingController controller;
   final String label;
-  final String? hintText;
   final int maxLines;
 
   const _EditProfileField({
     required this.controller,
     required this.label,
-    this.hintText,
     this.maxLines = 1,
   });
 
   @override
   Widget build(BuildContext context) {
+    final theme = appThemeController;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextField(
         controller: controller,
         maxLines: maxLines,
+        style: TextStyle(color: theme.textColor),
         decoration: InputDecoration(
           labelText: label,
-          hintText: hintText,
+          labelStyle: TextStyle(color: theme.mutedTextColor),
           filled: true,
-          fillColor: const Color(0xFFF9FAFB),
+          fillColor: theme.backgroundColor,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+            borderSide: BorderSide(
+              color: theme.mutedTextColor.withValues(alpha: 0.18),
+            ),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+            borderSide: BorderSide(
+              color: theme.mutedTextColor.withValues(alpha: 0.18),
+            ),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Color(0xFF6366F1), width: 1.5),
+            borderSide: BorderSide(color: theme.primaryColor, width: 1.5),
           ),
         ),
       ),
@@ -802,16 +1014,17 @@ class _ProfileInfoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = appThemeController;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.surfaceColor,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
         children: [
-          Icon(icon, color: const Color(0xFF6366F1)),
+          Icon(icon, color: theme.primaryColor),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -819,18 +1032,18 @@ class _ProfileInfoTile extends StatelessWidget {
               children: [
                 Text(
                   label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
-                    color: Color(0xFF6B7280),
+                    color: theme.mutedTextColor,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   value,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF1F2937),
+                    color: theme.textColor,
                   ),
                 ),
               ],

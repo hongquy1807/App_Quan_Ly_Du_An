@@ -1,6 +1,11 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'app_theme_controller.dart';
+import 'services/project_service.dart';
 import 'utils/color_utils.dart';
 import 'task_detail_screen.dart'; // Import trang chi tiết task
+
+enum ProjectDetailLanguage { vietnamese, english, chinese }
 
 class ProjectDetailScreen extends StatefulWidget {
   final Map<String, dynamic> project;
@@ -12,29 +17,277 @@ class ProjectDetailScreen extends StatefulWidget {
 }
 
 class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
+  final ProjectService _projectService = ProjectService();
+
   // Biến sắp xếp
   bool _isAscending = true;
+  ProjectDetailLanguage _language = ProjectDetailLanguage.vietnamese;
+  bool _isLoadingDetail = true;
+  String? _detailError;
+  String? _currentUserId;
+  Map<String, dynamic> _projectDetail = {};
 
   // Filter: 'all_tasks', 'in_progress', 'my_tasks', 'completed'
   String _currentFilter = 'all_tasks';
 
-  // Dữ liệu task mẫu
   List<Map<String, dynamic>> _allTasks = [];
 
-  // Thông tin thành viên
-  final List<Map<String, dynamic>> _members = [
-    {'id': '1', 'name': 'Nguyễn Văn A', 'avatar': '', 'role': 'Trưởng nhóm'},
-    {'id': '2', 'name': 'Trần Thị B', 'avatar': '', 'role': 'Thành viên'},
-    {'id': '3', 'name': 'Lê Văn C', 'avatar': '', 'role': 'Thành viên'},
-    {'id': '4', 'name': 'Phạm Thị D', 'avatar': '', 'role': 'Thành viên'},
-  ];
+  List<Map<String, dynamic>> _members = [];
 
   @override
   void initState() {
     super.initState();
-    _initTaskData();
+    _loadLanguage();
+    _loadProjectDetail();
   }
 
+  String _t(String vi, String en, String zh) {
+    switch (_language) {
+      case ProjectDetailLanguage.vietnamese:
+        return vi;
+      case ProjectDetailLanguage.english:
+        return en;
+      case ProjectDetailLanguage.chinese:
+        return zh;
+    }
+  }
+
+  Future<void> _loadLanguage() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawValue = prefs.getString('app_language');
+    if (!mounted) return;
+    setState(() {
+      _language = ProjectDetailLanguage.values.firstWhere(
+        (language) => language.name == rawValue,
+        orElse: () => ProjectDetailLanguage.vietnamese,
+      );
+    });
+  }
+
+  String _projectName(Map<String, dynamic> project) {
+    switch (project['id']?.toString()) {
+      case '1':
+        return _t('App di động', 'Mobile app', '移动应用');
+      case '2':
+        return _t('Website bán hàng', 'Sales website', '销售网站');
+      case '3':
+        return _t('Dự án AI', 'AI project', 'AI 项目');
+      case '4':
+        return _t('Hệ thống CRM', 'CRM system', 'CRM 系统');
+      default:
+        return project['name']?.toString() ?? '';
+    }
+  }
+
+  String _taskTitle(Map<String, dynamic> task) {
+    switch (task['id']?.toString()) {
+      case '1':
+        return _t(
+          'Thiết kế UI cho màn hình chính',
+          'Design UI for the main screen',
+          '设计主屏幕 UI',
+        );
+      case '2':
+        return _t('Xây dựng API đăng nhập', 'Build login API', '构建登录 API');
+      case '3':
+        return _t(
+          'Tối ưu hiệu suất ứng dụng',
+          'Optimize app performance',
+          '优化应用性能',
+        );
+      case '4':
+        return _t(
+          'Phân tích yêu cầu dự án',
+          'Analyze project requirements',
+          '分析项目需求',
+        );
+      case '5':
+        return _t('Thiết kế database', 'Design database', '设计数据库');
+      case '6':
+        return _t('Viết unit test', 'Write unit tests', '编写单元测试');
+      case '7':
+        return _t(
+          'Deploy lên production',
+          'Deploy to production',
+          '部署到生产环境',
+        );
+      case '8':
+        return _t('Code review', 'Code review', '代码审查');
+      default:
+        return task['title']?.toString() ?? '';
+    }
+  }
+
+  String _taskDescription(Map<String, dynamic> task) {
+    switch (task['id']?.toString()) {
+      case '1':
+        return _t(
+          'Thiết kế giao diện người dùng cho màn hình chính của ứng dụng',
+          'Design the user interface for the app main screen',
+          '为应用主屏幕设计用户界面',
+        );
+      case '2':
+        return _t(
+          'Tạo API cho chức năng đăng nhập và đăng ký',
+          'Create APIs for sign-in and sign-up',
+          '创建登录和注册功能的 API',
+        );
+      case '3':
+        return _t(
+          'Tối ưu hóa hiệu suất và giảm thời gian tải',
+          'Optimize performance and reduce loading time',
+          '优化性能并减少加载时间',
+        );
+      case '4':
+        return _t(
+          'Phân tích và document yêu cầu từ khách hàng',
+          'Analyze and document customer requirements',
+          '分析并记录客户需求',
+        );
+      case '5':
+        return _t(
+          'Thiết kế cơ sở dữ liệu cho hệ thống',
+          'Design the database for the system',
+          '为系统设计数据库',
+        );
+      case '6':
+        return _t(
+          'Viết unit test cho các module chính',
+          'Write unit tests for core modules',
+          '为核心模块编写单元测试',
+        );
+      case '7':
+        return _t(
+          'Triển khai ứng dụng lên môi trường production',
+          'Deploy the app to production',
+          '将应用部署到生产环境',
+        );
+      case '8':
+        return _t(
+          'Review code của các thành viên trong team',
+          'Review code from team members',
+          '审查团队成员的代码',
+        );
+      default:
+        return task['description']?.toString() ?? '';
+    }
+  }
+
+  String _statusText(String status, bool isCompleted, [String? statusCode]) {
+    if (isCompleted) return _t('Hoàn thành', 'Completed', '已完成');
+    switch (statusCode) {
+      case 'in_progress':
+        return _t('Đã nhận nhiệm vụ', 'Accepted task', '已接受任务');
+      case 'review':
+        return _t('Chờ duyệt', 'Pending review', '待审核');
+      case 'todo':
+        return _t('Chưa nhận', 'Not accepted', '未接受');
+      case 'done':
+        return _t('Hoàn thành', 'Completed', '已完成');
+    }
+
+    switch (status) {
+      case 'Đang làm':
+        return _t('Đã nhận nhiệm vụ', 'Accepted task', '已接受任务');
+      case 'Chưa bắt đầu':
+        return _t('Chưa nhận', 'Not accepted', '未接受');
+      case 'Trễ hạn':
+        return _t('Trễ hạn', 'Overdue', '已逾期');
+      case 'Chờ duyệt':
+        return _t('Chờ duyệt', 'Pending review', '待审核');
+      default:
+        return status;
+    }
+  }
+
+  bool get _canManageTasks {
+    final roleId = NumberParser.toInt(
+      (_projectDetail.isNotEmpty ? _projectDetail : widget.project)['project_role_id'],
+    );
+    return roleId == 1 || roleId == 2;
+  }
+
+  Future<void> _loadProjectDetail() async {
+    setState(() {
+      _isLoadingDetail = true;
+      _detailError = null;
+    });
+
+    try {
+      final projectId = widget.project['id']?.toString() ?? '';
+      final detail = await _projectService.getProjectDetail(projectId);
+      final projectData = detail['project'];
+      final membersData = detail['members'];
+      final tasksData = detail['tasks'];
+
+      if (!mounted) return;
+      setState(() {
+        _projectDetail = projectData is Map
+            ? Map<String, dynamic>.from(projectData)
+            : Map<String, dynamic>.from(widget.project);
+        _currentUserId = detail['current_user_id']?.toString();
+        _members = membersData is List
+            ? membersData
+                .whereType<Map>()
+                .map((member) => Map<String, dynamic>.from(member))
+                .toList()
+            : [];
+        _allTasks = tasksData is List
+            ? tasksData
+                .whereType<Map>()
+                .map((task) => _mapApiTask(Map<String, dynamic>.from(task)))
+                .toList()
+            : [];
+        _isLoadingDetail = false;
+      });
+    } catch (err) {
+      if (!mounted) return;
+      setState(() {
+        _detailError = err.toString();
+        _isLoadingDetail = false;
+      });
+    }
+  }
+
+  Map<String, dynamic> _mapApiTask(Map<String, dynamic> task) {
+    final dueDate = _parseApiDate(task['dueDate'] ?? task['due_date']);
+    final statusCode = task['status_code']?.toString() ?? '';
+    final status = _statusText(
+      task['status']?.toString() ?? '',
+      false,
+      statusCode,
+    );
+    final isCompleted =
+        task['isCompleted'] == true ||
+        statusCode == 'done';
+
+    return {
+      'id': task['id']?.toString() ?? '',
+      'title': task['title']?.toString() ?? '',
+      'description': task['description']?.toString() ?? '',
+      'dueDate': dueDate,
+      'assignee': task['assignee']?.toString() ?? 'Cả team',
+      'assigneeId': task['assigneeId']?.toString() ??
+          task['assignee_id']?.toString() ??
+          '',
+      'status': status,
+      'statusCode': statusCode,
+      'isCompleted': isCompleted,
+      'subtasks': task['subtasks'] is List ? task['subtasks'] : const [],
+      'attachments': task['attachments'] is List ? task['attachments'] : const [],
+      'comments': task['comments'] is List ? task['comments'] : const [],
+      'createdAt': _parseApiDate(task['createdAt'] ?? task['created_at']),
+    };
+  }
+
+  DateTime _parseApiDate(dynamic value) {
+    if (value is DateTime) return value;
+    final text = value?.toString();
+    if (text == null || text.isEmpty) return DateTime.now();
+    return DateTime.tryParse(text) ?? DateTime.now();
+  }
+
+  // ignore: unused_element
   void _initTaskData() {
     final now = DateTime.now();
     _allTasks = [
@@ -149,14 +402,17 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
       case 'my_tasks':
         // Tất cả task của tôi
         filtered = _allTasks
-            .where((task) => task['assigneeId'] == '1')
+            .where((task) => task['assigneeId'] == _currentUserId)
             .toList();
         break;
 
       case 'in_progress':
         // Tất cả task đang được thực hiện
         filtered = _allTasks
-            .where((task) => task['status'] == 'Đang làm' && !task['isCompleted'])
+            .where(
+              (task) =>
+                  task['statusCode'] == 'in_progress' && !task['isCompleted'],
+            )
             .toList();
         break;
 
@@ -176,14 +432,12 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
         filtered = [];
     }
 
-    // Sắp xếp theo tên, riêng "Nhiệm vụ của tôi" đưa task hoàn thành xuống cuối.
+    // Luôn đưa nhiệm vụ đã hoàn thành xuống cuối danh sách.
     filtered.sort((a, b) {
-      if (_currentFilter == 'my_tasks') {
-        final aCompleted = a['isCompleted'] == true;
-        final bCompleted = b['isCompleted'] == true;
-        if (aCompleted != bCompleted) {
-          return aCompleted ? 1 : -1;
-        }
+      final aCompleted = a['isCompleted'] == true;
+      final bCompleted = b['isCompleted'] == true;
+      if (_currentFilter != 'completed' && aCompleted != bCompleted) {
+        return aCompleted ? 1 : -1;
       }
 
       final nameA = a['title'].toLowerCase();
@@ -197,10 +451,10 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
   int _getTaskCount(String filter) {
     switch (filter) {
       case 'my_tasks':
-        return _allTasks.where((t) => t['assigneeId'] == '1').length;
+        return _allTasks.where((t) => t['assigneeId'] == _currentUserId).length;
       case 'in_progress':
         return _allTasks
-            .where((t) => t['status'] == 'Đang làm' && !t['isCompleted'])
+            .where((t) => t['statusCode'] == 'in_progress' && !t['isCompleted'])
             .length;
       case 'all_tasks':
         return _allTasks.length;
@@ -211,15 +465,122 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     }
   }
 
+  void _openCreateTask() {
+    Navigator.pushNamed(
+      context,
+      '/create-task',
+      arguments: {
+        'project': _projectDetail.isNotEmpty ? _projectDetail : widget.project,
+        'members': _members,
+      },
+    ).then((created) {
+      if (created == true) {
+        _loadProjectDetail();
+      }
+    });
+  }
+
+  Future<void> _openTaskDetail(
+    Map<String, dynamic> task, {
+    bool startEditing = false,
+  }) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TaskDetailScreen(
+          task: task,
+          project: _projectDetail.isNotEmpty ? _projectDetail : widget.project,
+          startEditing: startEditing,
+        ),
+      ),
+    );
+    if (mounted) {
+      _loadProjectDetail();
+    }
+  }
+
+  Future<void> _confirmDeleteTask(Map<String, dynamic> task) async {
+    final theme = appThemeController;
+    final taskId = task['id']?.toString() ?? '';
+    if (taskId.isEmpty) return;
+
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: theme.surfaceColor,
+        title: Text(
+          _t('Xóa nhiệm vụ', 'Delete task', '删除任务'),
+          style: TextStyle(color: theme.textColor, fontWeight: FontWeight.w700),
+        ),
+        content: Text(
+          _t(
+            'Bạn có chắc muốn xóa nhiệm vụ này không?',
+            'Are you sure you want to delete this task?',
+            '确定要删除此任务吗？',
+          ),
+          style: TextStyle(color: theme.mutedTextColor),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_t('Hủy', 'Cancel', '取消')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(
+              _t('Xóa', 'Delete', '删除'),
+              style: const TextStyle(color: Color(0xFFEF4444)),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldDelete != true || !mounted) return;
+
+    try {
+      await _projectService.deleteTask(taskId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _t(
+              'Đã xóa nhiệm vụ',
+              'Task deleted',
+              '任务已删除',
+            ),
+          ),
+        ),
+      );
+      _loadProjectDetail();
+    } catch (err) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(err.toString())),
+      );
+    }
+  }
+
+  void _handleTaskMenu(String action, Map<String, dynamic> task) {
+    if (action == 'edit') {
+      _openTaskDetail(task, startEditing: true);
+      return;
+    }
+    if (action == 'delete') {
+      _confirmDeleteTask(task);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final project = widget.project;
+    final theme = appThemeController;
+    final project = _projectDetail.isNotEmpty ? _projectDetail : widget.project;
     final color = parseHexColor(project['color']);
     final filteredTasks = _getFilteredTasks();
     final incompleteTasks = _allTasks.where((t) => !t['isCompleted']).length;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: appThemeController.backgroundColor,
       body: SafeArea(
         child: Column(
           children: [
@@ -227,7 +588,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: theme.surfaceColor,
                 borderRadius: const BorderRadius.only(
                   bottomLeft: Radius.circular(24),
                   bottomRight: Radius.circular(24),
@@ -251,13 +612,13 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                         child: Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF3F4F6),
+                            color: theme.backgroundColor,
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Icon(
+                          child: Icon(
                             Icons.arrow_back_ios_new_rounded,
                             size: 20,
-                            color: Color(0xFF1F2937),
+                            color: theme.textColor,
                           ),
                         ),
                       ),
@@ -276,11 +637,11 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                             const SizedBox(width: 12),
                             Expanded(
                               child: Text(
-                                project['name'],
-                                style: const TextStyle(
+                                _projectName(project),
+                                style: TextStyle(
                                   fontSize: 20,
                                   fontWeight: FontWeight.bold,
-                                  color: Color(0xFF1F2937),
+                                  color: theme.textColor,
                                 ),
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -297,16 +658,47 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                     children: [
                       _buildQuickInfo(
                         icon: Icons.task_rounded,
-                        label: 'Task chưa hoàn thành',
+                        label: _t(
+                          'Nhiệm vụ chưa hoàn thành',
+                          'Incomplete tasks',
+                          '未完成任务',
+                        ),
                         value: incompleteTasks.toString(),
                         color: color,
                       ),
                       const SizedBox(width: 12),
                       _buildQuickInfo(
                         icon: Icons.people_rounded,
-                        label: 'Thành viên',
+                        label: _t('Thành viên', 'Members', '成员'),
                         value: _members.length.toString(),
                         color: color,
+                        onTap: () {
+                          Navigator.pushNamed(
+                            context,
+                            '/project-members',
+                            arguments: {
+                              'project': {
+                                ...(_projectDetail.isNotEmpty
+                                    ? _projectDetail
+                                    : widget.project),
+                                'current_user_id': _currentUserId,
+                              },
+                              'members': _members,
+                            },
+                          ).then((invited) {
+                            if (invited == true) {
+                              _loadProjectDetail();
+                            }
+                          });
+                        },
+                      ),
+                      const SizedBox(width: 12),
+                      _buildQuickInfo(
+                        icon: Icons.add_task_rounded,
+                        label: _t('Thêm nhiệm vụ', 'Add task', '添加任务'),
+                        value: '+',
+                        color: color,
+                        onTap: _openCreateTask,
                       ),
                     ],
                   ),
@@ -314,9 +706,6 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
               ),
             ),
             const SizedBox(height: 16),
-
-            _buildActionButtons(color),
-            const SizedBox(height: 12),
 
             // Filter và Sort
             Container(
@@ -330,28 +719,32 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                       child: Row(
                         children: [
                           _buildFilterChip(
-                            label: 'Tất cả',
+                            label: _t('Tất cả', 'All', '全部'),
                             value: 'all_tasks',
                             count: _getTaskCount('all_tasks'),
                             icon: Icons.list_rounded,
                           ),
                           const SizedBox(width: 8),
                           _buildFilterChip(
-                            label: 'Đang tiến hành',
+                            label: _t(
+                              'Đang tiến hành',
+                              'In progress',
+                              '进行中',
+                            ),
                             value: 'in_progress',
                             count: _getTaskCount('in_progress'),
                             icon: Icons.play_circle_rounded,
                           ),
                           const SizedBox(width: 8),
                           _buildFilterChip(
-                            label: 'Nhiệm vụ của tôi',
+                            label: _t('Nhiệm vụ của tôi', 'My tasks', '我的任务'),
                             value: 'my_tasks',
                             count: _getTaskCount('my_tasks'),
                             icon: Icons.person_rounded,
                           ),
                           const SizedBox(width: 8),
                           _buildFilterChip(
-                            label: 'Hoàn thành',
+                            label: _t('Hoàn thành', 'Completed', '已完成'),
                             value: 'completed',
                             count: _getTaskCount('completed'),
                             icon: Icons.check_circle_rounded,
@@ -364,7 +757,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                   // Sort button
                   Container(
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF3F4F6),
+                      color: theme.surfaceColor,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: IconButton(
@@ -390,7 +783,13 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
 
             // Danh sách task
             Expanded(
-              child: filteredTasks.isEmpty
+              child: _isLoadingDetail
+                  ? Center(
+                      child: CircularProgressIndicator(color: color),
+                    )
+                  : _detailError != null
+                  ? _buildErrorState(color)
+                  : filteredTasks.isEmpty
                   ? Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -398,27 +797,33 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                           Icon(
                             Icons.check_circle_outline_rounded,
                             size: 80,
-                            color: const Color(
-                              0xFF6B7280,
-                            ).withValues(alpha: 0.3),
+                            color: theme.mutedTextColor.withValues(alpha: 0.3),
                           ),
                           const SizedBox(height: 16),
-                          const Text(
-                            'Không có task nào',
+                          Text(
+                            _t('Không có task nào', 'No tasks found', '没有任务'),
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w600,
-                              color: Color(0xFF6B7280),
+                              color: theme.mutedTextColor,
                             ),
                           ),
                           const SizedBox(height: 8),
                           Text(
                             _currentFilter == 'my_tasks'
-                                ? 'Bạn chưa có task nào trong dự án này'
-                                : 'Không có task nào phù hợp',
-                            style: const TextStyle(
+                                ? _t(
+                                    'Bạn chưa có task nào trong dự án này',
+                                    'You do not have any tasks in this project',
+                                    '你在此项目中还没有任务',
+                                  )
+                                : _t(
+                                    'Không có task nào phù hợp',
+                                    'No matching tasks',
+                                    '没有匹配的任务',
+                                  ),
+                            style: TextStyle(
                               fontSize: 14,
-                              color: Color(0xFF9CA3AF),
+                              color: theme.mutedTextColor,
                             ),
                           ),
                         ],
@@ -447,38 +852,83 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     required String label,
     required String value,
     required Color color,
+    VoidCallback? onTap,
   }) {
+    final theme = appThemeController;
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.05),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withValues(alpha: 0.1)),
-        ),
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, size: 16, color: color),
-                const SizedBox(width: 4),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: color,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withValues(alpha: 0.1)),
+          ),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 16, color: color),
+                  const SizedBox(width: 4),
+                  Text(
+                    value,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: color,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: TextStyle(fontSize: 10, color: theme.mutedTextColor),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorState(Color color) {
+    final theme = appThemeController;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline_rounded,
+              size: 70,
+              color: const Color(0xFFEF4444).withValues(alpha: 0.8),
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 16),
             Text(
-              label,
-              style: const TextStyle(fontSize: 10, color: Color(0xFF6B7280)),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+              _detailError ?? _t('Không thể tải dự án', 'Unable to load project', '无法加载项目'),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: theme.textColor,
+              ),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _loadProjectDetail,
+              icon: const Icon(Icons.refresh_rounded),
+              label: Text(_t('Thử lại', 'Retry', '重试')),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: color,
+                foregroundColor: Colors.white,
+              ),
             ),
           ],
         ),
@@ -486,57 +936,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     );
   }
 
-  Widget _buildActionButtons(Color color) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Row(
-        children: [
-          Expanded(
-            child: ElevatedButton.icon(
-              onPressed: () {
-                Navigator.pushNamed(context, '/create-task');
-              },
-              icon: const Icon(Icons.add_task_rounded, size: 18),
-              label: const Text(
-                'Thêm nhiệm vụ',
-                overflow: TextOverflow.ellipsis,
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: color,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                padding: const EdgeInsets.symmetric(vertical: 13),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: () => _showAddMemberSheet(color),
-              icon: Icon(Icons.person_add_rounded, size: 18, color: color),
-              label: Text(
-                'Thêm thành viên',
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: color, fontWeight: FontWeight.w600),
-              ),
-              style: OutlinedButton.styleFrom(
-                backgroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 13),
-                side: BorderSide(color: color.withValues(alpha: 0.35)),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
+  // ignore: unused_element
   void _showAddTaskSheet(Color color) {
     final titleController = TextEditingController();
     final descriptionController = TextEditingController();
@@ -545,28 +945,40 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _ProjectActionSheet(
-        title: 'Thêm nhiệm vụ',
-        buttonText: 'Tạo nhiệm vụ',
+      builder: (sheetContext) => _ProjectActionSheet(
+        title: _t('Thêm nhiệm vụ', 'Add task', '添加任务'),
+        buttonText: _t('Tạo nhiệm vụ', 'Create task', '创建任务'),
         color: color,
         children: [
           _ActionTextField(
             controller: titleController,
-            label: 'Tên nhiệm vụ',
-            hintText: 'Nhập tên nhiệm vụ',
+            label: _t('Tên nhiệm vụ', 'Task name', '任务名称'),
+            hintText: _t('Nhập tên nhiệm vụ', 'Enter task name', '请输入任务名称'),
           ),
           const SizedBox(height: 12),
           _ActionTextField(
             controller: descriptionController,
-            label: 'Mô tả',
-            hintText: 'Nhập mô tả nhiệm vụ',
+            label: _t('Mô tả', 'Description', '描述'),
+            hintText: _t(
+              'Nhập mô tả nhiệm vụ',
+              'Enter task description',
+              '请输入任务描述',
+            ),
             maxLines: 3,
           ),
         ],
         onSubmit: () {
-          Navigator.pop(context);
+          Navigator.pop(sheetContext);
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Đã tạo nhiệm vụ mới')),
+            SnackBar(
+              content: Text(
+                _t(
+                  'Đã tạo nhiệm vụ mới',
+                  'New task created',
+                  '已创建新任务',
+                ),
+              ),
+            ),
           );
         },
       ),
@@ -576,42 +988,13 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     });
   }
 
-  void _showAddMemberSheet(Color color) {
-    final emailController = TextEditingController();
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _ProjectActionSheet(
-        title: 'Thêm thành viên',
-        buttonText: 'Gửi lời mời',
-        color: color,
-        children: [
-          _ActionTextField(
-            controller: emailController,
-            label: 'Email thành viên',
-            hintText: 'Nhập email',
-          ),
-        ],
-        onSubmit: () {
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Đã gửi lời mời thành viên')),
-          );
-        },
-      ),
-    ).whenComplete(() {
-      emailController.dispose();
-    });
-  }
-
   Widget _buildFilterChip({
     required String label,
     required String value,
     required int count,
     required IconData icon,
   }) {
+    final theme = appThemeController;
     final isSelected = _currentFilter == value;
 
     return FilterChip(
@@ -627,7 +1010,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
           Icon(
             icon,
             size: 16,
-            color: isSelected ? Colors.white : const Color(0xFF6B7280),
+            color: isSelected ? Colors.white : theme.mutedTextColor,
           ),
           const SizedBox(width: 4),
           Text(
@@ -635,7 +1018,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w500,
-              color: isSelected ? Colors.white : const Color(0xFF4B5563),
+              color: isSelected ? Colors.white : theme.textColor,
             ),
           ),
           if (count > 0) ...[
@@ -660,7 +1043,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
           ],
         ],
       ),
-      backgroundColor: const Color(0xFFF3F4F6),
+      backgroundColor: theme.surfaceColor,
       selectedColor: const Color(0xFF6366F1),
       checkmarkColor: Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -669,27 +1052,19 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
   }
 
   Widget _buildTaskCard(Map<String, dynamic> task) {
+    final theme = appThemeController;
     final dueDate = task['dueDate'] as DateTime;
     final isOverdue = dueDate.isBefore(DateTime.now()) && !task['isCompleted'];
     final isCompleted = task['isCompleted'];
-    final isMyTask = task['assigneeId'] == '1';
+    final isMyTask = task['assigneeId'] == _currentUserId;
 
     return GestureDetector(
-      onTap: () {
-        // Điều hướng đến trang chi tiết task đã tạo riêng
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) =>
-                TaskDetailScreen(task: task, project: widget.project),
-          ),
-        );
-      },
+      onTap: () => _openTaskDetail(task),
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: theme.surfaceColor,
           borderRadius: BorderRadius.circular(14),
           boxShadow: [
             BoxShadow(
@@ -724,13 +1099,13 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        task['title'],
+                        _taskTitle(task),
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
                           color: isCompleted
-                              ? const Color(0xFF6B7280)
-                              : const Color(0xFF1F2937),
+                              ? theme.mutedTextColor
+                              : theme.textColor,
                           decoration: isCompleted
                               ? TextDecoration.lineThrough
                               : null,
@@ -740,10 +1115,10 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        task['description'],
+                        _taskDescription(task),
                         style: TextStyle(
                           fontSize: 12,
-                          color: const Color(0xFF6B7280),
+                          color: theme.mutedTextColor,
                           decoration: isCompleted
                               ? TextDecoration.lineThrough
                               : null,
@@ -754,6 +1129,52 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                     ],
                   ),
                 ),
+                if (_canManageTasks)
+                  PopupMenuButton<String>(
+                    color: theme.surfaceColor,
+                    icon: Icon(
+                      Icons.more_vert_rounded,
+                      color: theme.mutedTextColor,
+                      size: 22,
+                    ),
+                    onSelected: (value) => _handleTaskMenu(value, task),
+                    itemBuilder: (context) => [
+                      PopupMenuItem(
+                        value: 'edit',
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.edit_rounded,
+                              size: 18,
+                              color: Color(0xFF6366F1),
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              _t('Sửa', 'Edit', '编辑'),
+                              style: TextStyle(color: theme.textColor),
+                            ),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'delete',
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.delete_outline_rounded,
+                              size: 18,
+                              color: Color(0xFFEF4444),
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              _t('Xóa', 'Delete', '删除'),
+                              style: const TextStyle(color: Color(0xFFEF4444)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
               ],
             ),
             const SizedBox(height: 10),
@@ -788,7 +1209,9 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            isMyTask ? 'Tôi' : task['assignee'],
+                            isMyTask
+                                ? _t('Tôi', 'Me', '我')
+                                : task['assignee'],
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w500,
@@ -851,10 +1274,10 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                   ),
                   child: Text(
                     isCompleted
-                        ? '✅ Hoàn thành'
+                        ? '✅ ${_t('Hoàn thành', 'Completed', '已完成')}'
                         : isOverdue
-                        ? '⏰ Trễ hạn'
-                        : '🔄 ${task['status']}',
+                        ? '⏰ ${_t('Trễ hạn', 'Overdue', '已逾期')}'
+                        : '🔄 ${_statusText(task['status'], isCompleted, task['statusCode'])}',
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
@@ -898,9 +1321,9 @@ class _ProjectActionSheet extends StatelessWidget {
       ),
       child: Container(
         padding: const EdgeInsets.all(20),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        decoration: BoxDecoration(
+          color: appThemeController.surfaceColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: SingleChildScrollView(
           child: Column(
@@ -909,10 +1332,10 @@ class _ProjectActionSheet extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF1F2937),
+                  color: appThemeController.textColor,
                 ),
               ),
               const SizedBox(height: 16),
@@ -970,7 +1393,7 @@ class _ActionTextField extends StatelessWidget {
         labelText: label,
         hintText: hintText,
         filled: true,
-        fillColor: const Color(0xFFF9FAFB),
+        fillColor: appThemeController.backgroundColor,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: Color(0xFFE5E7EB)),

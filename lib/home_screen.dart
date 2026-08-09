@@ -1,17 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'app_theme_controller.dart';
+import 'project_detail_screen.dart';
 import 'services/home_service.dart';
 import 'services/auth_service.dart';
+import 'task_detail_screen.dart';
 import 'utils/color_utils.dart';
+import 'widgets/app_bottom_navigation.dart';
+
+enum HomeLanguage { vietnamese, english, chinese }
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final bool showBottomNavigation;
+
+  const HomeScreen({super.key, this.showBottomNavigation = true});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _currentIndex = 0;
+  HomeLanguage _language = HomeLanguage.vietnamese;
 
   final _homeService = HomeService();
 
@@ -31,7 +40,112 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _loadLanguage();
     _loadDashboard();
+  }
+
+  String _t(String vi, String en, String zh) {
+    switch (_language) {
+      case HomeLanguage.vietnamese:
+        return vi;
+      case HomeLanguage.english:
+        return en;
+      case HomeLanguage.chinese:
+        return zh;
+    }
+  }
+
+  Future<void> _loadLanguage() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawValue = prefs.getString('app_language');
+    if (!mounted) return;
+    setState(() {
+      _language = HomeLanguage.values.firstWhere(
+        (language) => language.name == rawValue,
+        orElse: () => HomeLanguage.vietnamese,
+      );
+    });
+  }
+
+  String _displayProjectName(String name) {
+    switch (name) {
+      case 'App di động':
+        return _t('App di động', 'Mobile app', '移动应用');
+      case 'Website bán hàng':
+        return _t('Website bán hàng', 'Sales website', '销售网站');
+      case 'Dự án AI':
+        return _t('Dự án AI', 'AI project', 'AI 项目');
+      case 'Hệ thống CRM':
+        return _t('Hệ thống CRM', 'CRM system', 'CRM 系统');
+      default:
+        return name;
+    }
+  }
+
+  String _displayTaskTitle(String title) {
+    switch (title) {
+      case 'Thiết kế UI cho màn hình chính':
+        return _t(
+          'Thiết kế UI cho màn hình chính',
+          'Design UI for the main screen',
+          '设计主屏幕 UI',
+        );
+      case 'Xây dựng API đăng nhập':
+        return _t('Xây dựng API đăng nhập', 'Build login API', '构建登录 API');
+      case 'Tối ưu hiệu suất ứng dụng':
+        return _t(
+          'Tối ưu hiệu suất ứng dụng',
+          'Optimize app performance',
+          '优化应用性能',
+        );
+      default:
+        return title;
+    }
+  }
+
+  String _taskStatusText(String statusCode) {
+    switch (statusCode) {
+      case 'in_progress':
+        return _t('Đang làm', 'In progress', '进行中');
+      case 'todo':
+        return _t('Chưa nhận', 'Not accepted', '未接受');
+      case 'review':
+        return _t('Chờ duyệt', 'Pending review', '待审核');
+      default:
+        return _t('Chưa nhận', 'Not accepted', '未接受');
+    }
+  }
+
+  Color _taskStatusColor(String statusCode, bool isOverdue) {
+    if (isOverdue) return const Color(0xFFEF4444);
+    switch (statusCode) {
+      case 'in_progress':
+        return const Color(0xFF10B981);
+      case 'review':
+        return const Color(0xFF6366F1);
+      case 'todo':
+      default:
+        return const Color(0xFFF59E0B);
+    }
+  }
+
+  IconData _taskStatusIcon(String statusCode, bool isOverdue) {
+    if (isOverdue) return Icons.warning_amber_rounded;
+    switch (statusCode) {
+      case 'in_progress':
+        return Icons.hourglass_top_rounded;
+      case 'review':
+        return Icons.fact_check_rounded;
+      case 'todo':
+      default:
+        return Icons.inbox_rounded;
+    }
+  }
+
+  int _toInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
   }
 
   Future<void> _loadDashboard() async {
@@ -66,6 +180,7 @@ class _HomeScreenState extends State<HomeScreen> {
             'description': map['description'] ?? '',
             'color': map['color'] ?? '#6366F1',
             'icon': Icons.folder_open_rounded,
+            'members': map['members'] ?? 0,
             'totalTasks': map['totalTasks'] ?? map['total_tasks'] ?? 0,
             'completedTasks':
                 map['completedTasks'] ?? map['completed_tasks'] ?? 0,
@@ -85,11 +200,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
           return {
             'id': map['id']?.toString() ?? '',
+            'project_id': map['project_id']?.toString() ?? '',
             'title': map['title'] ?? '',
             'dueDate': due ?? DateTime.now().add(const Duration(days: 7)),
             'projectName': map['projectName'] ?? map['project_name'] ?? '',
             'projectColor':
                 map['projectColor'] ?? map['project_color'] ?? '#6366F1',
+            'statusCode': map['status_code'] ?? map['status'] ?? 'todo',
+            'status': map['status'] ?? 'todo',
             'isCompleted': map['isCompleted'] ?? map['is_completed'] ?? false,
           };
         }).toList();
@@ -122,9 +240,47 @@ class _HomeScreenState extends State<HomeScreen> {
         _loading = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Không thể tải dữ liệu trang chủ.')),
+        SnackBar(
+          content: Text(
+            _t(
+              'Không thể tải dữ liệu trang chủ.',
+              'Unable to load home data.',
+              '无法加载首页数据。',
+            ),
+          ),
+        ),
       );
     }
+  }
+
+  void _openProjectDetail(Map<String, dynamic> project) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ProjectDetailScreen(project: project),
+      ),
+    );
+  }
+
+  void _openTaskDetail(Map<String, dynamic> task) {
+    final projectId = task['project_id']?.toString() ?? '';
+    final project = projects.firstWhere(
+      (item) => item['id']?.toString() == projectId,
+      orElse: () => {
+        'id': projectId,
+        'name': task['projectName']?.toString() ?? '',
+        'description': '',
+        'color': task['projectColor']?.toString() ?? '#6366F1',
+        'icon': Icons.folder_open_rounded,
+      },
+    );
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TaskDetailScreen(task: task, project: project),
+      ),
+    );
   }
 
   @override
@@ -134,17 +290,19 @@ class _HomeScreenState extends State<HomeScreen> {
       (a, b) => (a['dueDate'] as DateTime).compareTo(b['dueDate'] as DateTime),
     );
 
+    final theme = appThemeController;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: theme.backgroundColor,
       body: SafeArea(
         child: Column(
           children: [
             // ============ HEADER ============
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.only(
+              decoration: BoxDecoration(
+                color: theme.surfaceColor,
+                borderRadius: const BorderRadius.only(
                   bottomLeft: Radius.circular(24),
                   bottomRight: Radius.circular(24),
                 ),
@@ -187,16 +345,20 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Row(
+                        Row(
                           children: [
-                            Icon(
+                            const Icon(
                               Icons.wb_sunny,
                               size: 14,
                               color: Color(0xFFF59E0B),
                             ),
-                            SizedBox(width: 6),
+                            const SizedBox(width: 6),
                             Text(
-                              'Chúc bạn làm việc hiệu quả!',
+                              _t(
+                                'Chúc bạn làm việc hiệu quả!',
+                                'Have a productive day!',
+                                '祝你工作高效！',
+                              ),
                               style: TextStyle(
                                 fontSize: 11,
                                 color: Color(0xFF6B7280),
@@ -215,12 +377,12 @@ class _HomeScreenState extends State<HomeScreen> {
                         width: 44,
                         height: 44,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF3F4F6),
+                          color: theme.backgroundColor,
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: IconButton(
                           icon: const Icon(Icons.notifications_none),
-                          color: const Color(0xFF1F2937),
+                          color: theme.textColor,
                           onPressed: () {
                             Navigator.pushNamed(context, '/notifications');
                           },
@@ -303,7 +465,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                 _buildStatItem(
                                   icon: Icons.folder_open_rounded,
                                   value: projects.length.toString(),
-                                  label: 'Dự án đã tham gia',
+                                  label: _t(
+                                    'Dự án đã tham gia',
+                                    'Joined projects',
+                                    '已参与项目',
+                                  ),
                                 ),
                                 Container(
                                   width: 1,
@@ -313,7 +479,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                 _buildStatItem(
                                   icon: Icons.pending_actions_rounded,
                                   value: incompleteTasks.length.toString(),
-                                  label: 'Task chưa hoàn thành',
+                                  label: _t(
+                                    'Task chưa hoàn thành',
+                                    'Incomplete tasks',
+                                    '未完成任务',
+                                  ),
                                 ),
                               ],
                             ),
@@ -326,12 +496,16 @@ class _HomeScreenState extends State<HomeScreen> {
                             children: [
                               Row(
                                 children: [
-                                  const Text(
-                                    'Dự án của bạn',
+                                  Text(
+                                    _t(
+                                      'Dự án của bạn',
+                                      'Your projects',
+                                      '你的项目',
+                                    ),
                                     style: TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.bold,
-                                      color: Color(0xFF1F2937),
+                                      color: theme.textColor,
                                     ),
                                   ),
                                   const SizedBox(width: 8),
@@ -356,16 +530,20 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ],
                               ),
                               TextButton(
-                                onPressed: () {},
+                                onPressed: () =>
+                                    Navigator.pushReplacementNamed(
+                                  context,
+                                  '/projects',
+                                ),
                                 style: TextButton.styleFrom(
                                   padding: EdgeInsets.zero,
                                   minimumSize: Size.zero,
                                   tapTargetSize:
                                       MaterialTapTargetSize.shrinkWrap,
                                 ),
-                                child: const Text(
-                                  'Xem tất cả →',
-                                  style: TextStyle(
+                                child: Text(
+                                  _t('Xem tất cả →', 'View all →', '查看全部 →'),
+                                  style: const TextStyle(
                                     color: Color(0xFF6366F1),
                                     fontWeight: FontWeight.w600,
                                     fontSize: 13,
@@ -376,7 +554,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           const SizedBox(height: 12),
                           SizedBox(
-                            height: 140,
+                            height: 164,
                             child: ListView.builder(
                               scrollDirection: Axis.horizontal,
                               itemCount: projects.length,
@@ -385,102 +563,100 @@ class _HomeScreenState extends State<HomeScreen> {
                                 final projectColor = parseHexColor(
                                   project['color'],
                                 );
-                                final progress = project['totalTasks'] > 0
-                                    ? project['completedTasks'] /
-                                          project['totalTasks']
-                                    : 0.0;
+                                final totalTasks = _toInt(
+                                  project['totalTasks'],
+                                );
+                                final completedTasks = _toInt(
+                                  project['completedTasks'],
+                                );
+                                final memberCount = _toInt(project['members']);
 
-                                return Container(
-                                  width: 180,
-                                  margin: const EdgeInsets.only(right: 12),
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(16),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.grey.withValues(
-                                          alpha: 0.08,
-                                        ),
-                                        blurRadius: 10,
-                                        offset: const Offset(0, 4),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.all(8),
-                                            decoration: BoxDecoration(
-                                              color: projectColor.withValues(
-                                                alpha: 0.1,
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(10),
-                                            ),
-                                            child: Icon(
-                                              project['icon'],
-                                              size: 18,
-                                              color: projectColor,
-                                            ),
+                                return InkWell(
+                                  borderRadius: BorderRadius.circular(16),
+                                  onTap: () => _openProjectDetail(project),
+                                  child: Container(
+                                    width: 180,
+                                    margin: const EdgeInsets.only(right: 12),
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: theme.surfaceColor,
+                                      borderRadius: BorderRadius.circular(16),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.grey.withValues(
+                                            alpha: 0.08,
                                           ),
-                                          const SizedBox(width: 10),
-                                          Expanded(
-                                            child: Text(
-                                              project['name'],
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.w600,
-                                                fontSize: 14,
-                                                color: Color(0xFF1F2937),
-                                              ),
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const Spacer(),
-                                      Text(
-                                        project['description'],
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          color: Color(0xFF6B7280),
+                                          blurRadius: 10,
+                                          offset: const Offset(0, 4),
                                         ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: ClipRRect(
-                                              borderRadius:
-                                                  BorderRadius.circular(6),
-                                              child: LinearProgressIndicator(
-                                                value: progress,
-                                                backgroundColor: const Color(
-                                                  0xFFF3F4F6,
+                                      ],
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.all(8),
+                                              decoration: BoxDecoration(
+                                                color: projectColor.withValues(
+                                                  alpha: 0.1,
                                                 ),
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                              ),
+                                              child: Icon(
+                                                project['icon'],
+                                                size: 18,
                                                 color: projectColor,
-                                                minHeight: 6,
                                               ),
                                             ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Text(
-                                            '${(progress * 100).round()}%',
-                                            style: const TextStyle(
-                                              fontSize: 11,
-                                              color: Color(0xFF6B7280),
-                                              fontWeight: FontWeight.w600,
+                                            const SizedBox(width: 10),
+                                            Expanded(
+                                              child: Text(
+                                                _displayProjectName(
+                                                  project['name']?.toString() ??
+                                                      '',
+                                                ),
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 14,
+                                                  color: theme.textColor,
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
                                             ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 18),
+                                        Text(
+                                          project['description'],
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: theme.mutedTextColor,
                                           ),
-                                        ],
-                                      ),
-                                    ],
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Row(
+                                          children: [
+                                            _buildProjectStatChip(
+                                              Icons.task_alt_rounded,
+                                              '$completedTasks/$totalTasks',
+                                              projectColor,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            _buildProjectStatChip(
+                                              Icons.people_rounded,
+                                              memberCount.toString(),
+                                              projectColor,
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 );
                               },
@@ -491,12 +667,16 @@ class _HomeScreenState extends State<HomeScreen> {
                           // ----- NHI?M V? C?A B?N -----
                           Row(
                             children: [
-                              const Text(
-                                'Nhiệm vụ của bạn',
+                              Text(
+                                _t(
+                                  'Nhiệm vụ của bạn',
+                                  'Your tasks',
+                                  '你的任务',
+                                ),
                                 style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold,
-                                  color: Color(0xFF1F2937),
+                                  color: theme.textColor,
                                 ),
                               ),
                               const SizedBox(width: 8),
@@ -525,7 +705,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             Container(
                               padding: const EdgeInsets.all(32),
                               decoration: BoxDecoration(
-                                color: Colors.white,
+                                color: theme.surfaceColor,
                                 borderRadius: BorderRadius.circular(16),
                                 boxShadow: [
                                   BoxShadow(
@@ -545,10 +725,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                     ).withValues(alpha: 0.3),
                                   ),
                                   const SizedBox(height: 12),
-                                  const Text(
-                                    'Không có nhiệm vụ nào!',
+                                  Text(
+                                    _t(
+                                      'Không có nhiệm vụ nào!',
+                                      'No tasks found!',
+                                      '暂无任务！',
+                                    ),
                                     style: TextStyle(
-                                      color: Color(0xFF6B7280),
+                                      color: theme.mutedTextColor,
                                       fontSize: 16,
                                       fontWeight: FontWeight.w500,
                                     ),
@@ -563,49 +747,58 @@ class _HomeScreenState extends State<HomeScreen> {
                                 final isOverdue = dueDate.isBefore(
                                   DateTime.now(),
                                 );
+                                final statusCode =
+                                    task['statusCode']?.toString() ?? 'todo';
+                                final statusColor = _taskStatusColor(
+                                  statusCode,
+                                  isOverdue,
+                                );
+                                final statusLabel = isOverdue
+                                    ? _t('Quá hạn', 'Overdue', '已逾期')
+                                    : _taskStatusText(statusCode);
                                 final projectColor = parseHexColor(
                                   task['projectColor'],
                                 );
 
-                                return Container(
-                                  margin: const EdgeInsets.only(bottom: 10),
-                                  padding: const EdgeInsets.all(14),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(14),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.grey.withValues(
-                                          alpha: 0.06,
+                                return InkWell(
+                                  borderRadius: BorderRadius.circular(14),
+                                  onTap: () => _openTaskDetail(task),
+                                  child: Container(
+                                    margin: const EdgeInsets.only(bottom: 10),
+                                    padding: const EdgeInsets.all(14),
+                                    decoration: BoxDecoration(
+                                      color: theme.surfaceColor,
+                                      borderRadius: BorderRadius.circular(14),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.grey.withValues(
+                                            alpha: 0.06,
+                                          ),
+                                          blurRadius: 10,
+                                          offset: const Offset(0, 4),
                                         ),
-                                        blurRadius: 10,
-                                        offset: const Offset(0, 4),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Row(
-                                    children: [
+                                      ],
+                                    ),
+                                    child: Row(
+                                      children: [
                                       // Tr?ng th?i
                                       Container(
                                         width: 40,
                                         height: 40,
                                         decoration: BoxDecoration(
-                                          color:
-                                              (isOverdue
-                                                      ? const Color(0xFFEF4444)
-                                                      : const Color(0xFF10B981))
-                                                  .withValues(alpha: 0.1),
+                                          color: statusColor.withValues(
+                                            alpha: 0.1,
+                                          ),
                                           borderRadius: BorderRadius.circular(
                                             12,
                                           ),
                                         ),
                                         child: Icon(
-                                          isOverdue
-                                              ? Icons.warning_amber_rounded
-                                              : Icons.hourglass_top_rounded,
-                                          color: isOverdue
-                                              ? const Color(0xFFEF4444)
-                                              : const Color(0xFF10B981),
+                                          _taskStatusIcon(
+                                            statusCode,
+                                            isOverdue,
+                                          ),
+                                          color: statusColor,
                                           size: 22,
                                         ),
                                       ),
@@ -617,11 +810,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                               CrossAxisAlignment.start,
                                           children: [
                                             Text(
-                                              task['title'],
-                                              style: const TextStyle(
+                                              _displayTaskTitle(
+                                                task['title']?.toString() ?? '',
+                                              ),
+                                              style: TextStyle(
                                                 fontSize: 14,
                                                 fontWeight: FontWeight.w600,
-                                                color: Color(0xFF1F2937),
+                                                color: theme.textColor,
                                               ),
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
@@ -643,7 +838,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                                     BorderRadius.circular(8),
                                               ),
                                               child: Text(
-                                                task['projectName'],
+                                                _displayProjectName(
+                                                  task['projectName']
+                                                          ?.toString() ??
+                                                      '',
+                                                ),
                                                 style: TextStyle(
                                                   fontSize: 10,
                                                   fontWeight: FontWeight.w500,
@@ -657,10 +856,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                             // Th?i gian
                                             Row(
                                               children: [
-                                                const Icon(
+                                                Icon(
                                                   Icons.access_time_rounded,
                                                   size: 14,
-                                                  color: Color(0xFF6B7280),
+                                                  color: theme.mutedTextColor,
                                                 ),
                                                 const SizedBox(width: 4),
                                                 Text(
@@ -698,8 +897,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                                     const Color(0xFFDC2626),
                                                   ]
                                                 : [
-                                                    const Color(0xFF10B981),
-                                                    const Color(0xFF059669),
+                                                    statusColor,
+                                                    statusColor.withValues(
+                                                      alpha: 0.82,
+                                                    ),
                                                   ],
                                           ),
                                           borderRadius: BorderRadius.circular(
@@ -707,22 +908,16 @@ class _HomeScreenState extends State<HomeScreen> {
                                           ),
                                           boxShadow: [
                                             BoxShadow(
-                                              color:
-                                                  (isOverdue
-                                                          ? const Color(
-                                                              0xFFEF4444,
-                                                            )
-                                                          : const Color(
-                                                              0xFF10B981,
-                                                            ))
-                                                      .withValues(alpha: 0.3),
+                                              color: statusColor.withValues(
+                                                alpha: 0.3,
+                                              ),
                                               blurRadius: 6,
                                               offset: const Offset(0, 2),
                                             ),
                                           ],
                                         ),
                                         child: Text(
-                                          isOverdue ? 'Quá hạn' : 'Đang làm',
+                                          statusLabel,
                                           style: const TextStyle(
                                             color: Colors.white,
                                             fontSize: 10,
@@ -730,7 +925,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                           ),
                                         ),
                                       ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 );
                               }).toList(),
@@ -743,90 +939,13 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
-      // ============ BOTTOM NAVIGATION ============
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(24),
-            topRight: Radius.circular(24),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.grey.withValues(alpha: 0.1),
-              blurRadius: 20,
-              offset: const Offset(0, -4),
-            ),
-          ],
-        ),
-        child: BottomNavigationBar(
-          currentIndex: _currentIndex,
-          onTap: (index) {
-            setState(() {
-              _currentIndex = index;
-            });
-
-            // X? l? ?i?u h??ng
-            switch (index) {
-              case 0:
-                Navigator.pushReplacementNamed(context, '/home');
-                break;
-              case 1:
-                Navigator.pushReplacementNamed(context, '/timeline');
-                break;
-              case 2:
-                Navigator.pushReplacementNamed(context, '/projects');
-                break;
-              case 3:
-                Navigator.pushReplacementNamed(context, '/chat');
-                break;
-              case 4:
-
-                Navigator.pushReplacementNamed(context, '/profile');
-
-                break;
-            }
-          },
-          type: BottomNavigationBarType.fixed,
-          selectedItemColor: const Color(0xFF6366F1),
-          unselectedItemColor: const Color(0xFF9CA3AF),
-          selectedLabelStyle: const TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 11,
-          ),
-          unselectedLabelStyle: const TextStyle(fontSize: 11),
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_rounded),
-              activeIcon: Icon(Icons.home_rounded),
-              label: 'Trang chủ',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.calendar_month_rounded),
-              activeIcon: Icon(Icons.calendar_month_rounded),
-              label: 'Lịch',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.folder_rounded),
-              activeIcon: Icon(Icons.folder_rounded),
-              label: 'Dự án',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.chat_rounded),
-              activeIcon: Icon(Icons.chat_rounded),
-              label: 'Tin nhắn',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.person_rounded),
-              activeIcon: Icon(Icons.person_rounded),
-              label: 'Tôi',
-            ),
-          ],
-        ),
-      ),
+      bottomNavigationBar: widget.showBottomNavigation
+          ? const AppBottomNavigation(currentItem: AppBottomNavItem.home)
+          : null,
     );
   }
 
+  // ignore: unused_element
   Future<void> _showNotificationsPanel() async {
     try {
       // Fetch latest notifications from API
@@ -877,9 +996,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
-                            'Thông báo',
-                            style: TextStyle(fontWeight: FontWeight.bold),
+                          Text(
+                            _t('Thông báo', 'Notifications', '通知'),
+                            style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                           IconButton(
                             icon: const Icon(Icons.mark_email_read_rounded),
@@ -898,9 +1017,15 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     Flexible(
                       child: notifications.isEmpty
-                          ? const Padding(
-                              padding: EdgeInsets.all(20),
-                              child: Text('Không có thông báo.'),
+                          ? Padding(
+                              padding: const EdgeInsets.all(20),
+                              child: Text(
+                                _t(
+                                  'Không có thông báo.',
+                                  'No notifications.',
+                                  '暂无通知。',
+                                ),
+                              ),
                             )
                           : ListView.separated(
                               shrinkWrap: true,
@@ -940,7 +1065,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     TextButton(
                       onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Đóng'),
+                      child: Text(_t('Đóng', 'Close', '关闭')),
                     ),
                   ],
                 ),
@@ -958,7 +1083,17 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Không thể tải thông báo.')));
+      ).showSnackBar(
+        SnackBar(
+          content: Text(
+            _t(
+              'Không thể tải thông báo.',
+              'Unable to load notifications.',
+              '无法加载通知。',
+            ),
+          ),
+        ),
+      );
     }
   }
 
@@ -993,6 +1128,32 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildProjectStatChip(IconData icon, String value, Color color) {
+    final theme = appThemeController;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(9),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 4),
+          Text(
+            value,
+            style: TextStyle(
+              color: theme.textColor,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Dashboard - QuanLyDuAn</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">Q</div>
+          <div>
+            <strong>QuanLyDuAn</strong>
+            <span>Admin Panel</span>
+          </div>
+        </div>
+
+        <nav class="nav">
+          <a class="nav-item active" href="#overview" data-section="overview">
+            <span class="nav-icon">⌂</span>
+            Tổng quan
+          </a>
+          <a class="nav-item" href="#users" data-section="users">
+            <span class="nav-icon">◉</span>
+            Quản lý người dùng
+          </a>
+          <a class="nav-item" href="#projects" data-section="projects">
+            <span class="nav-icon">▣</span>
+            Quản lý dự án
+          </a>
+          <a class="nav-item" href="#feedbacks" data-section="feedbacks">
+            <span class="nav-icon">✎</span>
+            Quản lý thư góp ý
+          </a>
+        </nav>
+
+        <button class="logout-btn" type="button">
+          <span>↳</span>
+          Đăng xuất
+        </button>
+      </aside>
+
+      <main class="content">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Bảng điều khiển</p>
+            <h1 id="pageTitle">Tổng quan hệ thống</h1>
+          </div>
+          <div class="admin-chip">
+            <div class="avatar">A</div>
+            <div>
+              <strong>Admin</strong>
+              <span>Quản trị viên</span>
+            </div>
+          </div>
+        </header>
+
+        <section class="page-section active" id="overviewSection">
+          <section class="stats-grid" aria-label="Thống kê nhanh">
+            <article class="stat-card project">
+              <div class="stat-icon">▣</div>
+              <div>
+                <span class="stat-label">Tổng dự án của app</span>
+                <strong class="stat-value" id="totalProjects">--</strong>
+              </div>
+            </article>
+
+            <article class="stat-card users">
+              <div class="stat-icon">◉</div>
+              <div>
+                <span class="stat-label">Thành viên tham gia app</span>
+                <strong class="stat-value" id="totalUsers">--</strong>
+              </div>
+            </article>
+
+            <article class="stat-card feedback">
+              <div class="stat-icon">✎</div>
+              <div>
+                <span class="stat-label">Thư góp ý</span>
+                <strong class="stat-value" id="totalFeedbacks">--</strong>
+              </div>
+            </article>
+          </section>
+
+          <section class="panel-grid">
+            <article class="panel">
+              <div class="panel-header">
+                <h2>Hoạt động gần đây</h2>
+                <button type="button">Xem tất cả</button>
+              </div>
+              <div class="activity-list">
+                <div class="activity-item">
+                  <span class="dot purple"></span>
+                  <div>
+                    <strong>Dự án mới được tạo</strong>
+                    <p>Hệ thống sẽ hiển thị dữ liệu thật sau khi gắn API admin.</p>
+                  </div>
+                </div>
+                <div class="activity-item">
+                  <span class="dot green"></span>
+                  <div>
+                    <strong>Người dùng mới tham gia</strong>
+                    <p>Theo dõi tài khoản đăng ký mới trong ứng dụng.</p>
+                  </div>
+                </div>
+                <div class="activity-item">
+                  <span class="dot amber"></span>
+                  <div>
+                    <strong>Góp ý đang chờ xử lý</strong>
+                    <p>Admin có thể xem và cập nhật trạng thái phản hồi.</p>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="panel quick-panel">
+              <div class="panel-header">
+                <h2>Quản trị nhanh</h2>
+              </div>
+              <button class="quick-action" type="button" data-section="users">
+                Quản lý người dùng
+              </button>
+              <button class="quick-action" type="button" data-section="projects">
+                Quản lý dự án
+              </button>
+              <button class="quick-action" type="button" data-section="feedbacks">
+                Quản lý thư góp ý
+              </button>
+            </article>
+          </section>
+        </section>
+
+        <section class="page-section" id="usersSection">
+          <article class="panel management-panel">
+            <div class="management-toolbar">
+              <div>
+                <h2>Danh sách người dùng</h2>
+                <p>Hiển thị 20 người dùng mỗi trang.</p>
+              </div>
+              <button class="primary-btn" id="addUserBtn" type="button">
+                + Thêm người dùng
+              </button>
+            </div>
+
+            <div class="table-tools">
+              <label class="search-box">
+                <span>⌕</span>
+                <input
+                  id="userSearch"
+                  type="search"
+                  placeholder="Tìm theo tên hoặc email..."
+                />
+              </label>
+              <span class="result-count" id="userResultCount">0 người dùng</span>
+            </div>
+
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Người dùng</th>
+                    <th>Email</th>
+                    <th>Vai trò</th>
+                    <th>Ngày tham gia</th>
+                    <th>Trạng thái</th>
+                    <th class="action-col">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody id="userTableBody"></tbody>
+              </table>
+            </div>
+
+            <div class="pagination">
+              <button id="prevUserPage" type="button">Trước</button>
+              <span id="userPageInfo">Trang 1/1</span>
+              <button id="nextUserPage" type="button">Sau</button>
+            </div>
+          </article>
+        </section>
+
+        <section class="page-section" id="projectsSection">
+          <article class="panel management-panel">
+            <div class="management-toolbar">
+              <div>
+                <h2>Danh sách dự án</h2>
+                <p>Hiển thị 20 dự án mỗi trang.</p>
+              </div>
+              <button class="primary-btn" id="addProjectBtn" type="button">
+                + Thêm dự án
+              </button>
+            </div>
+
+            <div class="table-tools">
+              <label class="search-box">
+                <span>⌕</span>
+                <input
+                  id="projectSearch"
+                  type="search"
+                  placeholder="Tìm theo tên dự án hoặc trưởng nhóm..."
+                />
+              </label>
+              <span class="result-count" id="projectResultCount">0 dự án</span>
+            </div>
+
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Dự án</th>
+                    <th>Trưởng nhóm</th>
+                    <th>Thành viên</th>
+                    <th>Task</th>
+                    <th>Trạng thái</th>
+                    <th>Ngày tạo</th>
+                    <th class="action-col">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody id="projectTableBody"></tbody>
+              </table>
+            </div>
+
+            <div class="pagination">
+              <button id="prevProjectPage" type="button">Trước</button>
+              <span id="projectPageInfo">Trang 1/1</span>
+              <button id="nextProjectPage" type="button">Sau</button>
+            </div>
+          </article>
+        </section>
+
+        <section class="page-section" id="feedbacksSection">
+          <article class="panel management-panel">
+            <div class="management-toolbar">
+              <div>
+                <h2>Danh sách thư góp ý</h2>
+                <p>Theo dõi tiêu đề, nội dung và file đính kèm người dùng gửi.</p>
+              </div>
+            </div>
+
+            <div class="table-tools">
+              <label class="search-box">
+                <span>⌕</span>
+                <input
+                  id="feedbackSearch"
+                  type="search"
+                  placeholder="Tìm theo tiêu đề, nội dung hoặc người gửi..."
+                />
+              </label>
+              <select class="filter-select" id="feedbackStatusFilter">
+                <option value="all">Tất cả trạng thái</option>
+                <option value="pending">Chờ xử lý</option>
+                <option value="reviewing">Đang xem xét</option>
+                <option value="resolved">Đã xử lý</option>
+                <option value="rejected">Từ chối</option>
+              </select>
+              <span class="result-count" id="feedbackResultCount">0 góp ý</span>
+            </div>
+
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Tiêu đề</th>
+                    <th>Người gửi</th>
+                    <th>File</th>
+                    <th>Trạng thái</th>
+                    <th>Ngày gửi</th>
+                    <th class="action-col">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody id="feedbackTableBody"></tbody>
+              </table>
+            </div>
+
+            <div class="pagination">
+              <button id="prevFeedbackPage" type="button">Trước</button>
+              <span id="feedbackPageInfo">Trang 1/1</span>
+              <button id="nextFeedbackPage" type="button">Sau</button>
+            </div>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <div class="modal-backdrop" id="userModal" aria-hidden="true">
+      <form class="modal-card" id="userForm">
+        <div class="modal-header">
+          <h2 id="userModalTitle">Thêm người dùng</h2>
+          <button class="icon-btn" id="closeUserModal" type="button">×</button>
+        </div>
+        <input id="editingUserId" type="hidden" />
+        <label>
+          Họ tên
+          <input id="userNameInput" type="text" required />
+        </label>
+        <label>
+          Email
+          <input id="userEmailInput" type="email" required />
+        </label>
+        <label>
+          Vai trò
+          <select id="userRoleInput">
+            <option value="Member">Member</option>
+            <option value="Admin">Admin</option>
+          </select>
+        </label>
+        <label>
+          Trạng thái
+          <select id="userStatusInput">
+            <option value="Hoạt động">Hoạt động</option>
+            <option value="Tạm khóa">Tạm khóa</option>
+          </select>
+        </label>
+        <div class="modal-actions">
+          <button class="ghost-btn" id="cancelUserForm" type="button">Hủy</button>
+          <button class="primary-btn" type="submit">Lưu</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="modal-backdrop" id="projectModal" aria-hidden="true">
+      <form class="modal-card" id="projectForm">
+        <div class="modal-header">
+          <h2 id="projectModalTitle">Thêm dự án</h2>
+          <button class="icon-btn" id="closeProjectModal" type="button">×</button>
+        </div>
+        <input id="editingProjectId" type="hidden" />
+        <label>
+          Tên dự án
+          <input id="projectNameInput" type="text" required />
+        </label>
+        <label>
+          Mô tả
+          <textarea id="projectDescriptionInput" rows="4" required></textarea>
+        </label>
+        <label>
+          Trưởng nhóm
+          <input id="projectOwnerInput" type="text" required />
+        </label>
+        <div class="form-grid">
+          <label>
+            Thành viên
+            <input id="projectMembersInput" type="number" min="0" required />
+          </label>
+          <label>
+            Tổng task
+            <input id="projectTasksInput" type="number" min="0" required />
+          </label>
+        </div>
+        <label>
+          Trạng thái
+          <select id="projectStatusInput">
+            <option value="Đang thực hiện">Đang thực hiện</option>
+            <option value="Lên kế hoạch">Lên kế hoạch</option>
+            <option value="Hoàn thành">Hoàn thành</option>
+            <option value="Tạm dừng">Tạm dừng</option>
+          </select>
+        </label>
+        <div class="modal-actions">
+          <button class="ghost-btn" id="cancelProjectForm" type="button">Hủy</button>
+          <button class="primary-btn" type="submit">Lưu</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="modal-backdrop" id="feedbackModal" aria-hidden="true">
+      <div class="modal-card feedback-detail-card">
+        <div class="modal-header">
+          <h2>Chi tiết góp ý</h2>
+          <button class="icon-btn" id="closeFeedbackModal" type="button">×</button>
+        </div>
+        <div class="feedback-detail">
+          <p class="detail-label">Tiêu đề góp ý</p>
+          <h3 id="feedbackDetailTitle"></h3>
+          <p class="detail-label">Người gửi</p>
+          <p id="feedbackDetailSender"></p>
+          <p class="detail-label">Nội dung góp ý</p>
+          <p class="feedback-content" id="feedbackDetailContent"></p>
+          <p class="detail-label">File đính kèm</p>
+          <div class="attachment-list" id="feedbackDetailAttachments"></div>
+          <label>
+            Trạng thái xử lý
+            <select id="feedbackDetailStatus">
+              <option value="pending">Chờ xử lý</option>
+              <option value="reviewing">Đang xem xét</option>
+              <option value="resolved">Đã xử lý</option>
+              <option value="rejected">Từ chối</option>
+            </select>
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button class="ghost-btn" id="cancelFeedbackModal" type="button">Đóng</button>
+          <button class="primary-btn" id="saveFeedbackStatusBtn" type="button">
+            Lưu trạng thái
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script src="./script.js"></script>
+  </body>
+</html>

@@ -5,15 +5,18 @@ const mysql = require('mysql2/promise'); // Sử dụng thư viện mysql2 với
 const cors = require('cors');
 
 const app = express();
+const uploadDir = path.join(__dirname, 'upload');
 // ==========================================
 // 1. CẤU HÌNH CÁC MIDDLEWARE CƠ BẢN
 // ==========================================
 app.use(cors()); // Cho phép Flutter gọi API từ server này
-app.use(express.json()); // Bắt buộc phải có để đọc dữ liệu JSON gửi từ Flutter lên
+app.use(express.json({ limit: '50mb' })); // Bắt buộc phải có để đọc dữ liệu JSON gửi từ Flutter lên
 
 // ==========================================
 // 2. CẤU HÌNH KẾT NỐI MYSQL
 // ==========================================
+app.use('/upload', express.static(uploadDir));
+
 const dbConfig = {
     host: process.env.DB_HOST,
     port: process.env.DB_PORT || 3306,
@@ -57,12 +60,31 @@ app.get('/', (req, res) => {
 const authRoutes = require('./routes/authRoute');
 const homeRoutes = require('./routes/homeRoute');
 const notificationsRoutes = require('./routes/notificationsRoute');
-// const projectRoutes = require('./routes/projectRoute');
+const profileRoutes = require('./routes/profileRoute');
+const projectRoutes = require('./routes/projectRoute');
+const projectDetailRoutes = require('./routes/projectDetailRoute');
+const tasksDetailRoutes = require('./routes/tasksDetailRoute');
+const timelineRoutes = require('./routes/timelineRoute');
+const projectChatRoutes = require('./routes/projectChatRoute');
+const feedbackRoutes = require('./routes/feedbackRoute');
 //
 app.use('/api/auth', authRoutes);
 app.use('/api/home', homeRoutes);
 app.use('/api/notifications', notificationsRoutes);
-// app.use('/api/projects', checkAuthAPI, projectRoutes);
+app.use('/api/profile', profileRoutes);
+app.use('/api/project-detail', checkAuthAPI, projectDetailRoutes);
+app.use('/api/task-detail', checkAuthAPI, tasksDetailRoutes);
+app.use('/api/projects', checkAuthAPI, projectRoutes);
+app.use('/api/timeline', checkAuthAPI, timelineRoutes);
+app.use('/api/project-chat', checkAuthAPI, projectChatRoutes);
+app.use('/api/feedback', checkAuthAPI, feedbackRoutes);
+
+app.use('/api', (req, res) => {
+    return res.status(404).json({
+        success: false,
+        message: `Không tìm thấy API: ${req.method} ${req.originalUrl}`
+    });
+});
 
 // ==========================================
 // 6. CHẠY SERVER

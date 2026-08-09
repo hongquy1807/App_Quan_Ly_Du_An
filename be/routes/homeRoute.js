@@ -69,11 +69,12 @@ function mapProject(row) {
         start_date: row.start_date,
         end_date: row.end_date,
         owner_id: row.owner_id,
-        role_id: row.role_id,
+        project_role_id: row.project_role_id,
         role_name: row.role_name,
         color: getProjectColor(row.id),
         totalTasks: Number(row.total_tasks || 0),
-        completedTasks: Number(row.completed_tasks || 0)
+        completedTasks: Number(row.completed_tasks || 0),
+        members: Number(row.members || 0)
     };
 }
 
@@ -108,17 +109,19 @@ async function getCurrentUser(userId) {
 async function getProjects(userId) {
     const [rows] = await pool.query(
         `SELECT p.id, p.name, p.description, p.owner_id, p.status,
-                p.start_date, p.end_date, pm.role_id, r.name AS role_name,
-                COUNT(t.id) AS total_tasks,
-                SUM(CASE WHEN t.status = 'done' THEN 1 ELSE 0 END) AS completed_tasks
+                p.start_date, p.end_date, pm.project_role_id, pr.name AS role_name,
+                COUNT(DISTINCT all_pm.user_id) AS members,
+                COUNT(DISTINCT t.id) AS total_tasks,
+                COUNT(DISTINCT CASE WHEN t.status = 'done' THEN t.id END) AS completed_tasks
          FROM projects p
          LEFT JOIN project_members pm
                 ON pm.project_id = p.id AND pm.user_id = ?
-         LEFT JOIN roles r ON r.id = pm.role_id
+         LEFT JOIN project_roles pr ON pr.id = pm.project_role_id
+         LEFT JOIN project_members all_pm ON all_pm.project_id = p.id
          LEFT JOIN tasks t ON t.project_id = p.id
          WHERE p.owner_id = ? OR pm.user_id = ?
          GROUP BY p.id, p.name, p.description, p.owner_id, p.status,
-                  p.start_date, p.end_date, pm.role_id, r.name
+                  p.start_date, p.end_date, pm.project_role_id, pr.name
          ORDER BY p.updated_at DESC, p.created_at DESC`,
         [userId, userId, userId]
     );

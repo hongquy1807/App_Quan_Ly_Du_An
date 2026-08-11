@@ -45,7 +45,7 @@ function requireAuth(req, res, next) {
 }
 
 function toBool(value) {
-    return Number(value) === 1;
+    return Number(value) === 1 || value === true;
 }
 
 function safeJson(value) {
@@ -78,10 +78,22 @@ function notificationTitle(type, data) {
     if (type === 'deadline') {
         return Number(data.days_left) === 1 ? 'Task sắp đến hạn' : 'Nhắc hạn nhiệm vụ';
     }
-    if (type === 'task') return 'Bạn có nhiệm vụ mới';
+    if (type === 'task') {
+        if (data.action === 'completed') return 'Nhiệm vụ đã hoàn thành';
+        return 'Bạn có nhiệm vụ mới';
+    }
     if (type === 'project_invitation') return 'Bạn được mời tham gia dự án';
-    if (type === 'project_message') return 'Tin nhắn mới';
+    if (type === 'project_message') return 'Bạn có tin nhắn mới';
+    if (type === 'project') return 'Cập nhật dự án';
     return 'Thông báo';
+}
+
+function screenForNotification(type, data) {
+    if ((type === 'deadline' || type === 'task') && data.task_id) return 'task_detail';
+    if (type === 'project_invitation') return 'project_invitations';
+    if (type === 'project_message') return 'project_chat';
+    if (data.project_id) return 'project_detail';
+    return null;
 }
 
 function notificationProject(row, data) {
@@ -113,25 +125,23 @@ function mapNotification(row) {
     };
 }
 
-function screenForNotification(type, data) {
-    if (type === 'deadline' || type === 'task') return 'task_detail';
-    if (type === 'project_invitation') return 'project_invitations';
-    if (type === 'project_message') return 'project_chat';
-    if (data.project_id) return 'project_detail';
-    return null;
-}
-
 async function createDeadlineReminders(userId) {
     const placeholders = DEADLINE_REMINDER_DAYS.map(() => '?').join(', ');
     const [tasks] = await pool.query(
-        `SELECT DISTINCT t.id, t.title, t.project_id, t.due_date, p.name AS project_name,
+        `SELECT DISTINCT
+                t.id,
+                t.title,
+                t.project_id,
+                t.due_date,
+                p.name AS project_name,
                 DATEDIFF(t.due_date, CURDATE()) AS days_left
          FROM tasks t
          INNER JOIN projects p ON p.id = t.project_id
          INNER JOIN project_members pm ON pm.project_id = t.project_id
          WHERE pm.user_id = ?
+           AND p.status <> 'completed'
            AND (t.assignee_id = ? OR t.assignee_id IS NULL)
-           AND (t.status IS NULL OR t.status <> 'done')
+           AND COALESCE(t.status, 'todo') <> 'done'
            AND t.due_date IS NOT NULL
            AND DATEDIFF(t.due_date, CURDATE()) IN (${placeholders})`,
         [userId, userId, ...DEADLINE_REMINDER_DAYS]
@@ -184,7 +194,7 @@ router.get('/', async (req, res) => {
     try {
         const userId = req.user.id;
         const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-        const limit = Math.min(100, parseInt(req.query.limit, 10) || 20);
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
         const offset = (page - 1) * limit;
         const readFilter = req.query.read;
 
@@ -194,19 +204,26 @@ router.get('/', async (req, res) => {
         const params = [userId];
         if (readFilter === '0' || readFilter === '1') {
             where += ' AND n.`read` = ?';
-            params.push(readFilter);
+            params.push(Number(readFilter));
         }
 
         const [rows] = await pool.query(
-            `SELECT n.id, n.type, n.content, n.data, n.\`read\` AS \`read\`, n.created_at,
-                    p.id AS project_id, p.name AS project_name
+            `SELECT
+                    n.id,
+                    n.type,
+                    n.content,
+                    n.data,
+                    n.\`read\` AS \`read\`,
+                    n.created_at,
+                    p.id AS project_id,
+                    p.name AS project_name
              FROM notifications n
              LEFT JOIN projects p
                 ON p.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(n.data, '$.project_id')) AS UNSIGNED)
              ${where}
-             ORDER BY n.created_at DESC
+             ORDER BY n.created_at DESC, n.id DESC
              LIMIT ? OFFSET ?`,
-            params.concat([limit, offset])
+            [...params, limit, offset]
         );
 
         const [countRows] = await pool.query(
@@ -214,12 +231,14 @@ router.get('/', async (req, res) => {
             params
         );
 
+        const unread = rows.filter((row) => !toBool(row.read)).length;
         return res.json({
             success: true,
             data: {
                 page,
                 limit,
                 total: Number(countRows[0]?.total || 0),
+                unread,
                 notifications: rows.map(mapNotification)
             }
         });
@@ -242,6 +261,7 @@ router.get('/unread-count', async (req, res) => {
             'SELECT COUNT(*) AS total FROM notifications WHERE user_id = ? AND `read` = 0',
             [userId]
         );
+
         return res.json({
             success: true,
             data: { unread: Number(rows[0]?.total || 0) }
@@ -263,6 +283,7 @@ router.patch('/mark-all-read', async (req, res) => {
             'UPDATE notifications SET `read` = 1 WHERE user_id = ? AND `read` = 0',
             [userId]
         );
+
         return res.json({
             success: true,
             data: { marked: Number(result.affectedRows || 0) }
@@ -281,9 +302,17 @@ router.get('/:id', async (req, res) => {
     try {
         const userId = req.user.id;
         const id = Number(req.params.id || 0);
+
         const [rows] = await pool.query(
-            `SELECT n.id, n.type, n.content, n.data, n.\`read\` AS \`read\`, n.created_at,
-                    p.id AS project_id, p.name AS project_name
+            `SELECT
+                    n.id,
+                    n.type,
+                    n.content,
+                    n.data,
+                    n.\`read\` AS \`read\`,
+                    n.created_at,
+                    p.id AS project_id,
+                    p.name AS project_name
              FROM notifications n
              LEFT JOIN projects p
                 ON p.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(n.data, '$.project_id')) AS UNSIGNED)
@@ -291,6 +320,7 @@ router.get('/:id', async (req, res) => {
              LIMIT 1`,
             [id, userId]
         );
+
         if (!rows[0]) {
             return res.status(404).json({
                 success: false,
@@ -303,10 +333,10 @@ router.get('/:id', async (req, res) => {
             data: mapNotification(rows[0])
         });
     } catch (err) {
-        console.error('Lỗi lấy thông báo:', err);
+        console.error('Lỗi lấy chi tiết thông báo:', err);
         return res.status(500).json({
             success: false,
-            message: 'Không thể lấy thông báo.',
+            message: 'Không thể lấy chi tiết thông báo.',
             error: err.message
         });
     }
@@ -323,9 +353,10 @@ router.post('/', async (req, res) => {
         }
 
         const [result] = await pool.query(
-            'INSERT INTO notifications (user_id, type, content, data) VALUES (?, ?, ?, ?)',
+            'INSERT INTO notifications (user_id, type, content, data, `read`) VALUES (?, ?, ?, ?, 0)',
             [user_id, type, content, data ? JSON.stringify(data) : null]
         );
+
         return res.status(201).json({
             success: true,
             data: { id: result.insertId }
@@ -344,11 +375,13 @@ router.patch('/:id/read', async (req, res) => {
     try {
         const userId = req.user.id;
         const id = Number(req.params.id || 0);
-        const read = req.body.read === true ? 1 : 0;
+        const read = req.body.read === false || req.body.read === 0 || req.body.read === '0' ? 0 : 1;
+
         const [result] = await pool.query(
             'UPDATE notifications SET `read` = ? WHERE id = ? AND user_id = ?',
             [read, id, userId]
         );
+
         if (result.affectedRows === 0) {
             return res.status(404).json({
                 success: false,
@@ -374,10 +407,12 @@ router.delete('/:id', async (req, res) => {
     try {
         const userId = req.user.id;
         const id = Number(req.params.id || 0);
+
         const [result] = await pool.query(
             'DELETE FROM notifications WHERE id = ? AND user_id = ?',
             [id, userId]
         );
+
         if (result.affectedRows === 0) {
             return res.status(404).json({
                 success: false,

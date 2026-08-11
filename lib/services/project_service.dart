@@ -22,6 +22,21 @@ class ProjectService {
         .toList();
   }
 
+  Future<List<Map<String, dynamic>>> getCompletedProjects({
+    bool ascending = false,
+  }) async {
+    final data = await _request(
+      method: 'GET',
+      path: '/projects/completed?sort=${ascending ? 'asc' : 'desc'}',
+    );
+    final projects = data['data'];
+    if (projects is! List) return [];
+    return projects
+        .whereType<Map>()
+        .map((project) => Map<String, dynamic>.from(project))
+        .toList();
+  }
+
   Future<Map<String, dynamic>> createProject({
     required String name,
     String? description,
@@ -497,8 +512,7 @@ class ProjectService {
   Future<Map<String, dynamic>> completeProject(String id) async {
     final data = await _request(
       method: 'PATCH',
-      path: '/projects/$id',
-      body: {'status': 'completed'},
+      path: '/projects/$id/complete',
     );
 
     final responseData = data['data'];

@@ -4,7 +4,9 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_theme_controller.dart';
+import 'completed_projects_screen.dart';
 import 'feedback_screen.dart';
+import 'friends_screen.dart';
 import 'services/auth_service.dart';
 import 'services/profile_service.dart';
 import 'settings_screen.dart';
@@ -126,6 +128,66 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: Column(
                   children: [
                     _buildMenuItem(
+                      icon: Icons.workspace_premium_rounded,
+                      title: _t(
+                        'Dự án đã hoàn thành',
+                        'Completed projects',
+                        '已完成项目',
+                      ),
+                      subtitle: _t(
+                        'Xem lại các dự án bạn từng tham gia',
+                        'Review projects you have participated in',
+                        '查看你曾参与的项目',
+                      ),
+                      color: const Color(0xFF6366F1),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                const CompletedProjectsScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    _buildMenuItem(
+                      icon: Icons.people_alt_rounded,
+                      title: _t('Bạn bè', 'Friends', '朋友'),
+                      subtitle: _t(
+                        'Quản lý bạn bè và người quen',
+                        'Manage friends and contacts',
+                        '管理朋友和联系人',
+                      ),
+                      color: const Color(0xFF3B82F6),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const FriendsScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    _buildMenuItem(
+                      icon: Icons.description_rounded,
+                      title: _t('CV điện tử', 'Digital CV', '电子简历'),
+                      subtitle: _t(
+                        'Tạo và quản lý CV của bạn',
+                        'Create and manage your CV',
+                        '创建和管理你的简历',
+                      ),
+                      color: const Color(0xFFEC4899),
+                      isLocked: true,
+                      onTap: () {
+                        _showLockedFeatureDialog(
+                          _t('CV điện tử', 'Digital CV', '电子简历'),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    _buildMenuItem(
                       icon: Icons.feedback_rounded,
                       title: _t('Hòm thư góp ý', 'Feedback inbox', '反馈信箱'),
                       subtitle: _t(
@@ -161,23 +223,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                         );
                         if (mounted) _loadLanguage();
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    _buildMenuItem(
-                      icon: Icons.description_rounded,
-                      title: _t('CV điện tử', 'Digital CV', '电子简历'),
-                      subtitle: _t(
-                        'Tạo và quản lý CV của bạn',
-                        'Create and manage your CV',
-                        '创建和管理你的简历',
-                      ),
-                      color: const Color(0xFFEC4899),
-                      isLocked: true,
-                      onTap: () {
-                        _showLockedFeatureDialog(
-                          _t('CV điện tử', 'Digital CV', '电子简历'),
-                        );
                       },
                     ),
                     const SizedBox(height: 8),

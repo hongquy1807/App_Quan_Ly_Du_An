@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'app_theme_controller.dart';
 import 'services/auth_service.dart';
-import 'services/home_service.dart';
+import 'services/notification_service.dart';
 
 class NotificationScreen extends StatefulWidget {
   const NotificationScreen({super.key});
@@ -12,7 +12,7 @@ class NotificationScreen extends StatefulWidget {
 }
 
 class _NotificationScreenState extends State<NotificationScreen> {
-  final HomeService _homeService = HomeService();
+  final NotificationService _notificationService = NotificationService();
   final List<Map<String, dynamic>> _items = [];
   bool _isLoading = true;
   String? _errorMessage;
@@ -30,7 +30,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
     });
 
     try {
-      final response = await _homeService.getNotifications(limit: 50);
+      final response = await _notificationService.getNotifications(limit: 50);
       final data = response['data'];
       final notifications = data is Map ? data['notifications'] : null;
       final items = notifications is List
@@ -105,7 +105,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
     });
 
     try {
-      await _homeService.markNotificationRead(id, true);
+      await _notificationService.markRead(id, true);
     } catch (_) {
       if (!mounted) return;
       setState(() {

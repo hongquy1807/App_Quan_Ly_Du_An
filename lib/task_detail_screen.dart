@@ -36,8 +36,10 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   late Map<String, dynamic> _task;
   late Map<String, dynamic> _project;
   bool _isPickingAttachment = false;
+  bool _canUpdateWork = true;
 
   final List<Map<String, dynamic>> _comments = [];
+  final List<Map<String, dynamic>> _assigneeOptions = [];
 
   final TextEditingController _commentController = TextEditingController();
   final TextEditingController _editingCommentController =
@@ -52,6 +54,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   String? _editingCommentId;
   late DateTime _editingTaskDueDate;
   late String _editingTaskStatusCode;
+  String? _editingTaskAssigneeId;
   late String _taskStatus;
 
   @override
@@ -59,6 +62,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     super.initState();
     _task = Map<String, dynamic>.from(widget.task);
     _project = Map<String, dynamic>.from(widget.project);
+    _canUpdateWork = _task['can_update_work'] != false;
     _loadLanguage();
     _taskStatus = _task['status']?.toString() ?? 'Chưa nhận';
     _editingTaskDueDate = _task['dueDate'] is DateTime
@@ -117,6 +121,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       final subtasksData = detail['subtasks'];
       final attachmentsData = detail['attachments'];
       final commentsData = detail['comments'];
+      final membersData = detail['assignee_options'] ?? detail['members'];
+      final canUpdateWorkData = detail['can_update_work'];
 
       if (!mounted) return;
       setState(() {
@@ -130,6 +136,16 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           };
         }
         _taskStatus = _task['status']?.toString() ?? _taskStatus;
+        _canUpdateWork = canUpdateWorkData != false;
+        _assigneeOptions
+          ..clear()
+          ..addAll(
+            membersData is List
+                ? membersData
+                    .whereType<Map>()
+                    .map((item) => Map<String, dynamic>.from(item))
+                : const [],
+          );
         if (_isEditingTask) {
           _fillTaskEditControllers();
         }
@@ -185,6 +201,10 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       'title': task['title']?.toString() ?? '',
       'description': task['description']?.toString() ?? '',
       'assignee': task['assignee']?.toString() ?? 'Cả team',
+      'assignee_id': task['assignee_id'],
+      'assigneeId': task['assigneeId']?.toString() ??
+          task['assignee_id']?.toString() ??
+          '',
       'dueDate': dueDate,
       'createdAt': createdAt,
       'status': status,
@@ -217,6 +237,35 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       'icon': _attachmentIcon(type),
       'color': _attachmentColor(type),
     };
+  }
+
+  String _fileBaseUrl() {
+    final apiBaseUrl = AuthService.baseUrl;
+    if (apiBaseUrl.endsWith('/api')) {
+      return apiBaseUrl.substring(0, apiBaseUrl.length - 4);
+    }
+    return apiBaseUrl;
+  }
+
+  String _attachmentUrl(Map<String, dynamic> file) {
+    final rawUrl = file['url']?.toString().trim() ?? '';
+    if (rawUrl.isEmpty) return '';
+    if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
+      return rawUrl;
+    }
+    final path = rawUrl.startsWith('/') ? rawUrl : '/$rawUrl';
+    return '${_fileBaseUrl()}$path';
+  }
+
+  bool _isImageAttachment(Map<String, dynamic> file) {
+    final type = file['type']?.toString().toLowerCase() ?? '';
+    final name = file['name']?.toString().toLowerCase() ?? '';
+    return type == 'image' ||
+        name.endsWith('.jpg') ||
+        name.endsWith('.jpeg') ||
+        name.endsWith('.png') ||
+        name.endsWith('.webp') ||
+        name.endsWith('.gif');
   }
 
   Map<String, dynamic> _mapApiComment(Map<String, dynamic> comment) {
@@ -434,6 +483,11 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         : DateTime.now();
     _editingTaskStatusCode = _task['statusCode']?.toString() ??
         _statusCodeFromTaskStatus(_task['status']?.toString() ?? '');
+    final assigneeId = _task['assigneeId']?.toString() ??
+        _task['assignee_id']?.toString() ??
+        '';
+    _editingTaskAssigneeId =
+        assigneeId.isEmpty || assigneeId == 'null' ? '' : assigneeId;
   }
 
   void _startEditTaskInline() {
@@ -472,7 +526,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         title: title,
         description: _editingTaskDescriptionController.text.trim(),
         dueDate: _editingTaskDueDate,
-        status: _editingTaskStatusCode,
+        status: _canUpdateWork ? _editingTaskStatusCode : null,
+        assigneeId: _editingTaskAssigneeId,
       );
       final taskData = detail['task'];
       if (!mounted || taskData is! Map) return;
@@ -510,6 +565,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     String? description,
     DateTime? dueDate,
     String? status,
+    String? assigneeId,
   }) async {
     final data = await _commentRequest(
       method: 'PATCH',
@@ -519,6 +575,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         if (description != null) 'description': description,
         if (dueDate != null) 'due_date': _formatApiDate(dueDate),
         if (status != null) 'status': status,
+        if (assigneeId != null) 'assignee_id': assigneeId,
       },
     );
     final responseData = data['data'];
@@ -551,6 +608,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   }
 
   Future<void> _handleAddComment() async {
+    if (!_canUpdateWork) return;
     if (_commentController.text.trim().isEmpty) return;
 
     setState(() {
@@ -583,6 +641,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   }
 
   Future<void> _handleToggleSubtask(String id) async {
+    if (!_canUpdateWork) return;
     final index = _subtasks.indexWhere((st) => st['id'] == id);
     if (index == -1) return;
     final currentValue = _subtasks[index]['isCompleted'] == true;
@@ -917,6 +976,13 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
   Widget _buildInlineTaskEditor(Color projectColor) {
     final theme = appThemeController;
+    final assigneeValueExists = _assigneeOptions.any(
+      (member) =>
+          (member['user_id'] ?? member['id']).toString() ==
+          (_editingTaskAssigneeId ?? ''),
+    );
+    final selectedAssigneeValue =
+        assigneeValueExists ? (_editingTaskAssigneeId ?? '') : '';
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -1041,6 +1107,65 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           ),
           const SizedBox(height: 10),
           DropdownButtonFormField<String>(
+            initialValue: selectedAssigneeValue,
+            dropdownColor: theme.surfaceColor,
+            decoration: InputDecoration(
+              labelText: _t('Người nhận nhiệm vụ', 'Assignee', '负责人'),
+              labelStyle: TextStyle(color: theme.mutedTextColor),
+              filled: true,
+              fillColor: theme.surfaceColor,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: theme.mutedTextColor.withValues(alpha: 0.18),
+                ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: theme.mutedTextColor.withValues(alpha: 0.18),
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: projectColor, width: 1.4),
+              ),
+            ),
+            items: [
+              DropdownMenuItem<String>(
+                value: '',
+                child: Text(
+                  _t('Cả team', 'Whole team', '全团队'),
+                  style: TextStyle(color: theme.textColor),
+                ),
+              ),
+              ..._assigneeOptions.map((member) {
+                final id = (member['user_id'] ?? member['id']).toString();
+                final name = member['name']?.toString() ?? '';
+                final email = member['email']?.toString() ?? '';
+                final label = name.isEmpty ? email : name;
+                return DropdownMenuItem<String>(
+                  value: id,
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: theme.textColor),
+                  ),
+                );
+              }),
+            ],
+            onChanged: _isSavingTask
+                ? null
+                : (value) {
+                    setState(() {
+                      _editingTaskAssigneeId = value ?? '';
+                    });
+                  },
+          ),
+          const SizedBox(height: 10),
+          if (_canUpdateWork)
+            DropdownButtonFormField<String>(
             initialValue: _editingTaskStatusCode,
             dropdownColor: theme.surfaceColor,
             decoration: InputDecoration(
@@ -1081,7 +1206,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                     });
                   },
           ),
-          const SizedBox(height: 12),
+          if (_canUpdateWork) const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
@@ -1159,6 +1284,10 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   }
 
   Widget _buildStatusSelector() {
+    if (!_canUpdateWork) {
+      return _buildReadOnlyNotice();
+    }
+
     return Column(
       children: [
         _buildStatusOption('Chưa nhận', Icons.inbox_rounded),
@@ -1251,6 +1380,43 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     );
   }
 
+  Widget _buildReadOnlyNotice() {
+    final theme = appThemeController;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.backgroundColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.mutedTextColor.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.visibility_rounded,
+            color: Color(0xFF6B7280),
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _t(
+                'Bạn chỉ có quyền xem nhiệm vụ này',
+                'You can only view this task',
+                'You can only view this task',
+              ),
+              style: TextStyle(
+                color: theme.mutedTextColor,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildInfoItem({
     required IconData icon,
     required String label,
@@ -1337,7 +1503,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             return _buildSubtaskItem(subtask);
           }),
           // Nút thêm subtask
-          GestureDetector(
+          if (_canUpdateWork)
+            GestureDetector(
             onTap: () {
               _showAddSubtaskDialog();
             },
@@ -1377,9 +1544,11 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     final theme = appThemeController;
     return CheckboxListTile(
       value: subtask['isCompleted'],
-      onChanged: (value) {
-        _handleToggleSubtask(subtask['id']);
-      },
+      onChanged: _canUpdateWork
+          ? (value) {
+              _handleToggleSubtask(subtask['id']);
+            }
+          : null,
       title: Text(
         _subtaskTitle(subtask),
         style: TextStyle(
@@ -1459,8 +1628,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Row(
+          if (_canUpdateWork) const SizedBox(height: 12),
+          if (_canUpdateWork)
+            Row(
             children: [
               Expanded(
                 child: _buildUploadTypeButton(
@@ -1499,8 +1669,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             )
           else
             ..._attachments.map((file) => _buildAttachmentItem(file)),
-          const SizedBox(height: 12),
-          SizedBox(
+          if (_canUpdateWork) const SizedBox(height: 12),
+          if (_canUpdateWork)
+            SizedBox(
             width: double.infinity,
             height: 46,
             child: ElevatedButton.icon(
@@ -1570,6 +1741,16 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   }
 
   Future<void> _pickAndCreateAttachment({required String fileType}) async {
+    if (!_canUpdateWork) {
+      _showAttachmentMessage(
+        _t(
+          'Bạn chỉ có quyền xem nhiệm vụ này',
+          'You can only view this task',
+          'You can only view this task',
+        ),
+      );
+      return;
+    }
     if (_isPickingAttachment) return;
 
     setState(() {
@@ -1662,6 +1843,16 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   }
 
   Future<void> _handleCompleteTask() async {
+    if (!_canUpdateWork) {
+      _showAttachmentMessage(
+        _t(
+          'Bạn chỉ có quyền xem nhiệm vụ này',
+          'You can only view this task',
+          'You can only view this task',
+        ),
+      );
+      return;
+    }
     final previousStatus = _taskStatus;
     final previousCompleted = _task['isCompleted'] == true;
     setState(() {
@@ -1706,99 +1897,257 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
   Widget _buildAttachmentItem(Map<String, dynamic> file) {
     final theme = appThemeController;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: file['color'].withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: file['color'].withValues(alpha: 0.1)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: file['color'].withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
+    final canPreview = _isImageAttachment(file);
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: canPreview
+          ? () => _showImagePreview(file)
+          : () => _downloadAttachment(file),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: file['color'].withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: file['color'].withValues(alpha: 0.1)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: file['color'].withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(file['icon'], size: 20, color: file['color']),
             ),
-            child: Icon(file['icon'], size: 20, color: file['color']),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  file['name'],
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: theme.textColor,
-                  ),
-                ),
-                Text(
-                  file['size'],
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: theme.mutedTextColor,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          PopupMenuButton<String>(
-            icon: Icon(
-              Icons.more_vert_rounded,
-              color: theme.mutedTextColor,
-              size: 20,
-            ),
-            color: theme.surfaceColor,
-            onSelected: (value) {
-              if (value == 'download') {
-                _showAttachmentLocation(file);
-              } else if (value == 'delete') {
-                _deleteAttachment(file['id'].toString());
-              }
-            },
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: 'download',
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.download_rounded,
-                      size: 18,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    file['name'],
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
                       color: theme.textColor,
                     ),
-                    const SizedBox(width: 10),
-                    Text(
-                      _t('Tai xuong', 'Download', 'Download'),
-                      style: TextStyle(color: theme.textColor),
+                  ),
+                  Text(
+                    file['size'],
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: theme.mutedTextColor,
                     ),
-                  ],
+                  ),
+                ],
+              ),
+            ),
+            if (canPreview)
+              IconButton(
+                tooltip: _t('Xem nhanh', 'Preview', 'Preview'),
+                onPressed: () => _showImagePreview(file),
+                icon: Icon(
+                  Icons.visibility_rounded,
+                  color: theme.mutedTextColor,
+                  size: 20,
                 ),
               ),
-              PopupMenuItem(
-                value: 'delete',
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.delete_rounded,
-                      size: 18,
-                      color: Color(0xFFEF4444),
+            PopupMenuButton<String>(
+              icon: Icon(
+                Icons.more_vert_rounded,
+                color: theme.mutedTextColor,
+                size: 20,
+              ),
+              color: theme.surfaceColor,
+              onSelected: (value) {
+                if (value == 'download') {
+                  _downloadAttachment(file);
+                } else if (value == 'delete') {
+                  _deleteAttachment(file['id'].toString());
+                }
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'download',
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.download_rounded,
+                        size: 18,
+                        color: theme.textColor,
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        _t('Tải xuống', 'Download', 'Download'),
+                        style: TextStyle(color: theme.textColor),
+                      ),
+                    ],
+                  ),
+                ),
+                if (_canUpdateWork)
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.delete_rounded,
+                          size: 18,
+                          color: Color(0xFFEF4444),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          _t('Xóa', 'Delete', 'Delete'),
+                          style: const TextStyle(color: Color(0xFFEF4444)),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 10),
-                    Text(
-                      _t('Xoa', 'Delete', 'Delete'),
-                      style: const TextStyle(color: Color(0xFFEF4444)),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _downloadAttachment(Map<String, dynamic> file) async {
+    final url = _attachmentUrl(file);
+    if (url.isEmpty) {
+      _showAttachmentMessage(
+        _t('Không có đường dẫn file', 'No file path', 'No file path'),
+      );
+      return;
+    }
+
+    final uri = Uri.tryParse(url);
+    if (uri == null) {
+      _showAttachmentMessage(
+        _t('Đường dẫn file không hợp lệ', 'Invalid file URL', 'Invalid file URL'),
+      );
+      return;
+    }
+
+    try {
+      final response = await http.get(uri).timeout(const Duration(seconds: 30));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw ApiException(
+          _t('Không thể tải file', 'Unable to download file', 'Unable to download file'),
+        );
+      }
+
+      final savedPath = await FilePicker.platform.saveFile(
+        dialogTitle: _t('Lưu file', 'Save file', 'Save file'),
+        fileName: file['name']?.toString() ?? 'attachment',
+        bytes: response.bodyBytes,
+      );
+
+      if (!mounted) return;
+      if (savedPath == null) return;
+      _showAttachmentMessage(
+        _t('Đã tải file xuống', 'File downloaded', 'File downloaded'),
+      );
+    } catch (err) {
+      if (!mounted) return;
+      _showAttachmentMessage(
+        err is ApiException
+            ? err.message
+            : _t('Không thể tải file', 'Unable to download file', 'Unable to download file'),
+      );
+    }
+  }
+
+  void _showImagePreview(Map<String, dynamic> file) {
+    final theme = appThemeController;
+    final url = _attachmentUrl(file);
+    if (url.isEmpty) {
+      _showAttachmentMessage(
+        _t('Không có đường dẫn ảnh', 'No image path', 'No image path'),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.82),
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Align(
+                alignment: Alignment.centerRight,
+                child: IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close_rounded, color: Colors.white),
+                ),
+              ),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: InteractiveViewer(
+                  minScale: 0.8,
+                  maxScale: 4,
+                  child: Image.network(
+                    url,
+                    fit: BoxFit.contain,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return Container(
+                        width: double.infinity,
+                        height: 280,
+                        color: theme.surfaceColor,
+                        alignment: Alignment.center,
+                        child: const CircularProgressIndicator(),
+                      );
+                    },
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        width: double.infinity,
+                        height: 220,
+                        color: theme.surfaceColor,
+                        alignment: Alignment.center,
+                        child: Text(
+                          _t('Không thể tải ảnh', 'Unable to load image', 'Unable to load image'),
+                          style: TextStyle(color: theme.textColor),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                height: 46,
+                child: ElevatedButton.icon(
+                  onPressed: () => _downloadAttachment(file),
+                  icon: const Icon(Icons.download_rounded),
+                  label: Text(_t('Tải xuống', 'Download', 'Download')),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF6366F1),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                  ],
+                  ),
                 ),
               ),
             ],
           ),
-        ],
+        );
+      },
+    );
+  }
+
+  void _showAttachmentMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: const Color(0xFF6366F1),
       ),
     );
   }
@@ -1840,6 +2189,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   }
 
   Future<void> _deleteAttachment(String attachmentId) async {
+    if (!_canUpdateWork) return;
     final index = _attachments.indexWhere(
       (attachment) => attachment['id']?.toString() == attachmentId,
     );
@@ -1867,20 +2217,6 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         ),
       );
     }
-  }
-
-  void _showAttachmentLocation(Map<String, dynamic> file) {
-    final location = file['url']?.toString() ?? '';
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          location.isEmpty
-              ? _t('Khong co duong dan file', 'No file path', 'No file path')
-              : location,
-        ),
-        backgroundColor: const Color(0xFF6366F1),
-      ),
-    );
   }
 
   Widget _buildCommentSection() {
@@ -1924,8 +2260,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           ),
           const SizedBox(height: 12),
 
-          // Input comment
-          Row(
+          if (_canUpdateWork)
+            Row(
             children: [
               CircleAvatar(
                 radius: 20,
@@ -1998,7 +2334,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          if (_canUpdateWork) const SizedBox(height: 16),
 
           if (_comments.isEmpty)
             Padding(
@@ -2106,7 +2442,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                   ],
                 ),
               ),
-              if (comment['isMine'])
+              if (comment['isMine'] && _canUpdateWork)
                 PopupMenuButton<String>(
                   icon: Icon(
                     Icons.more_vert_rounded,
@@ -2270,6 +2606,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   }
 
   Future<void> _deleteComment(String commentId) async {
+    if (!_canUpdateWork) return;
     final index = _comments.indexWhere((comment) => comment['id'] == commentId);
     if (index == -1) return;
     final removedComment = Map<String, dynamic>.from(_comments[index]);
@@ -2353,6 +2690,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   }
 
   Future<void> _submitEditComment(String commentId) async {
+    if (!_canUpdateWork) return;
     final content = _editingCommentController.text.trim();
     if (content.isEmpty) return;
     await _updateComment(commentId: commentId, content: content);

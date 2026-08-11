@@ -783,63 +783,100 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
 
             // Danh sách task
             Expanded(
-              child: _isLoadingDetail
-                  ? Center(
-                      child: CircularProgressIndicator(color: color),
-                    )
-                  : _detailError != null
-                  ? _buildErrorState(color)
-                  : filteredTasks.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
+              child: RefreshIndicator(
+                onRefresh: _loadProjectDetail,
+                color: color,
+                child: _isLoadingDetail
+                    ? ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
                         children: [
-                          Icon(
-                            Icons.check_circle_outline_rounded,
-                            size: 80,
-                            color: theme.mutedTextColor.withValues(alpha: 0.3),
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            _t('Không có task nào', 'No tasks found', '没有任务'),
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              color: theme.mutedTextColor,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            _currentFilter == 'my_tasks'
-                                ? _t(
-                                    'Bạn chưa có task nào trong dự án này',
-                                    'You do not have any tasks in this project',
-                                    '你在此项目中还没有任务',
-                                  )
-                                : _t(
-                                    'Không có task nào phù hợp',
-                                    'No matching tasks',
-                                    '没有匹配的任务',
-                                  ),
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: theme.mutedTextColor,
+                          SizedBox(
+                            height: MediaQuery.of(context).size.height * 0.4,
+                            child: Center(
+                              child: CircularProgressIndicator(color: color),
                             ),
                           ),
                         ],
+                      )
+                    : _detailError != null
+                    ? ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: [
+                          SizedBox(
+                            height: MediaQuery.of(context).size.height * 0.45,
+                            child: _buildErrorState(color),
+                          ),
+                        ],
+                      )
+                    : filteredTasks.isEmpty
+                    ? ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: [
+                          SizedBox(
+                            height: MediaQuery.of(context).size.height * 0.45,
+                            child: Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.check_circle_outline_rounded,
+                                    size: 80,
+                                    color: theme.mutedTextColor.withValues(
+                                      alpha: 0.3,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    _t(
+                                      'Không có task nào',
+                                      'No tasks found',
+                                      '没有任务',
+                                    ),
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w600,
+                                      color: theme.mutedTextColor,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    _currentFilter == 'my_tasks'
+                                        ? _t(
+                                            'Bạn chưa có task nào trong dự án này',
+                                            'You do not have any tasks in this project',
+                                            '你在此项目中还没有任务',
+                                          )
+                                        : _t(
+                                            'Không có task nào phù hợp',
+                                            'No matching tasks',
+                                            '没有匹配的任务',
+                                          ),
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: theme.mutedTextColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    : ListView.builder(
+                        physics: const AlwaysScrollableScrollPhysics(
+                          parent: BouncingScrollPhysics(),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 8,
+                        ),
+                        itemCount: filteredTasks.length,
+                        itemBuilder: (context, index) {
+                          final task = filteredTasks[index];
+                          return _buildTaskCard(task);
+                        },
                       ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 8,
-                      ),
-                      itemCount: filteredTasks.length,
-                      itemBuilder: (context, index) {
-                        final task = filteredTasks[index];
-                        return _buildTaskCard(task);
-                      },
-                    ),
+              ),
             ),
           ],
         ),

@@ -428,10 +428,15 @@ class _HomeScreenState extends State<HomeScreen> {
             Expanded(
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
-                  : SingleChildScrollView(
-                      physics: const BouncingScrollPhysics(),
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: Column(
+                  : RefreshIndicator(
+                      onRefresh: _loadDashboard,
+                      color: theme.primaryColor,
+                      child: SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(
+                          parent: BouncingScrollPhysics(),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           // ----- TH?NG TIN NHANH -----
@@ -933,6 +938,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           const SizedBox(height: 20),
                         ],
+                      ),
                       ),
                     ),
             ),

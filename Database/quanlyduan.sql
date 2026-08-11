@@ -16,6 +16,69 @@
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
 --
+-- Table structure for table `feedback_attachments`
+--
+
+DROP TABLE IF EXISTS `feedback_attachments`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `feedback_attachments` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `feedback_id` int NOT NULL,
+  `file_name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `file_url` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `file_type` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `mime_type` varchar(120) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `file_size` bigint DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_feedback_attachments_feedback_id` (`feedback_id`),
+  CONSTRAINT `feedback_attachments_feedback_fk` FOREIGN KEY (`feedback_id`) REFERENCES `feedbacks` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `feedback_attachments`
+--
+
+LOCK TABLES `feedback_attachments` WRITE;
+/*!40000 ALTER TABLE `feedback_attachments` DISABLE KEYS */;
+/*!40000 ALTER TABLE `feedback_attachments` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `feedbacks`
+--
+
+DROP TABLE IF EXISTS `feedbacks`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `feedbacks` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `user_id` int DEFAULT NULL,
+  `title` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `status` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_feedbacks_user_id` (`user_id`),
+  KEY `idx_feedbacks_status` (`status`),
+  CONSTRAINT `feedbacks_user_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `feedbacks`
+--
+
+LOCK TABLES `feedbacks` WRITE;
+/*!40000 ALTER TABLE `feedbacks` DISABLE KEYS */;
+INSERT INTO `feedbacks` VALUES (1,8,'fix bug','i cant create new project','pending','2026-08-05 05:51:12','2026-08-05 05:51:12');
+/*!40000 ALTER TABLE `feedbacks` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
 -- Table structure for table `messages`
 --
 
@@ -65,7 +128,7 @@ CREATE TABLE `notifications` (
   PRIMARY KEY (`id`),
   KEY `user_id` (`user_id`),
   CONSTRAINT `notifications_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=71 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=77 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -74,7 +137,7 @@ CREATE TABLE `notifications` (
 
 LOCK TABLES `notifications` WRITE;
 /*!40000 ALTER TABLE `notifications` DISABLE KEYS */;
-INSERT INTO `notifications` VALUES (8,8,'project_invitation','Bạn được mời tham gia dự án hhhh.','{\"project_id\": 7, \"invitation_id\": 1}',0,'2026-07-27 17:27:05'),(9,6,'task','Bạn được giao nhiệm vụ mới: lllllhh','{\"task_id\": 11, \"project_id\": 7}',0,'2026-07-27 17:34:34'),(10,8,'task','Bạn được giao nhiệm vụ mới: test','{\"task_id\": 12, \"project_id\": 7}',0,'2026-07-29 04:36:29'),(11,8,'task','Nhiệm vụ test đã được đánh dấu hoàn thành.','{\"task_id\": 12, \"project_id\": 7}',0,'2026-07-29 04:37:03'),(12,6,'task','Bạn được giao nhiệm vụ mới: bnj','{\"task_id\": 13, \"project_id\": 7}',0,'2026-07-29 04:37:44'),(13,9,'project_invitation','Bạn được mời tham gia dự án hhhh.','{\"project_id\": 7, \"invitation_id\": 2}',0,'2026-07-29 04:39:21'),(14,8,'project_invitation','Bạn được mời tham gia dự án qqqqq.','{\"project_id\": 9, \"invitation_id\": 3}',0,'2026-07-29 04:41:44'),(15,9,'project_invitation','Bạn được mời tham gia dự án qqqqq.','{\"project_id\": 9, \"invitation_id\": 4}',0,'2026-07-29 04:41:44'),(16,9,'task','Bạn được giao nhiệm vụ mới: ggg','{\"task_id\": 14, \"project_id\": 9}',0,'2026-07-29 04:43:23'),(17,8,'project_invitation','Bạn được mời tham gia dự án tt55zz.','{\"project_id\": 10, \"invitation_id\": 5}',0,'2026-07-29 04:50:23'),(18,9,'project_invitation','Bạn được mời tham gia dự án qwerzop.','{\"project_id\": 11, \"invitation_id\": 6}',0,'2026-07-29 04:54:17'),(19,6,'project_invitation','Bạn được mời tham gia dự án tk q.','{\"project_id\": 12, \"invitation_id\": 7}',0,'2026-07-29 04:58:00'),(20,9,'project_invitation','Bạn được mời tham gia dự án tk q.','{\"project_id\": 12, \"invitation_id\": 8}',0,'2026-07-29 04:58:25'),(21,8,'project_invitation','Bạn được mời tham gia dự án tk q.','{\"project_id\": 12, \"invitation_id\": 9}',0,'2026-07-29 05:04:22'),(22,8,'task','Bạn được giao nhiệm vụ mới: ruu','{\"task_id\": 15, \"project_id\": 7}',0,'2026-07-29 06:07:09'),(23,6,'task','Nhiệm vụ bnj đã được đánh dấu hoàn thành.','{\"task_id\": 13, \"project_id\": 7}',0,'2026-07-29 06:42:57'),(24,6,'task','Nhiệm vụ bnj đã được đánh dấu hoàn thành.','{\"task_id\": 13, \"project_id\": 7}',0,'2026-07-29 07:02:18'),(25,6,'task','Nhiệm vụ bnj đã được đánh dấu hoàn thành.','{\"task_id\": 13, \"project_id\": 7}',0,'2026-07-29 07:02:49'),(26,6,'task','Nhiệm vụ bnj đã được đánh dấu hoàn thành.','{\"task_id\": 13, \"project_id\": 7}',0,'2026-07-29 07:21:27'),(27,8,'task','Bạn được giao nhiệm vụ mới: ts2','{\"task_id\": 17, \"project_id\": 11}',0,'2026-07-29 07:28:39'),(28,6,'task','Bạn được giao nhiệm vụ mới: f hk klobtxr','{\"task_id\": 20, \"project_id\": 9}',0,'2026-07-29 07:43:22'),(29,6,'task','Bạn được giao nhiệm vụ mới: 5xr6ctih h i hivy7vhhvhu bhi','{\"task_id\": 21, \"project_id\": 9}',0,'2026-07-29 07:44:01'),(30,6,'project_invitation','Bạn được mời tham gia dự án ád.','{\"project_id\": 8, \"invitation_id\": 11}',0,'2026-07-29 07:48:23'),(31,8,'project_invitation','Bạn được mời tham gia dự án s3zcf5cc5ug.','{\"project_id\": 13, \"invitation_id\": 12}',0,'2026-07-29 07:51:00'),(32,9,'project_invitation','Bạn được mời tham gia dự án s3zcf5cc5ug.','{\"project_id\": 13, \"invitation_id\": 13}',0,'2026-07-29 07:51:00'),(33,10,'project_invitation','Bạn được mời tham gia dự án s3zcf5cc5ug.','{\"project_id\": 13, \"invitation_id\": 14}',0,'2026-07-29 07:51:00'),(34,8,'project_invitation','Bạn được mời tham gia dự án s3zcf5cc5ug.','{\"project_id\": 13, \"invitation_id\": 15}',0,'2026-07-29 07:57:40'),(35,6,'project_invitation','Bạn được mời tham gia dự án ád.','{\"project_id\": 8, \"invitation_id\": 16}',0,'2026-07-29 08:13:46'),(36,6,'task','Báº¡n Ä‘Æ°á»£c giao nhiá»‡m vá»¥ má»›i: yyui','{\"task_id\": 22, \"project_id\": 13}',0,'2026-07-29 08:14:34'),(37,8,'project_invitation','Bạn được mời tham gia dự án qqqqq.','{\"project_id\": 9, \"invitation_id\": 17}',0,'2026-07-29 08:15:40'),(38,8,'project_invitation','Bạn được mời tham gia dự án s3zcf5cc5ug.','{\"project_id\": 13, \"invitation_id\": 18}',0,'2026-07-29 08:16:29'),(39,8,'project_invitation','Bạn được mời tham gia dự án s3zcf5cc5ug.','{\"project_id\": 13, \"invitation_id\": 19}',0,'2026-07-29 08:21:33'),(40,8,'project_invitation','Bạn được mời tham gia dự án s3zcf5cc5ug.','{\"project_id\": 13, \"invitation_id\": 21}',0,'2026-07-29 08:29:31'),(41,8,'project_invitation','Bạn được mời tham gia dự án s3zcf5cc5ug.','{\"project_id\": 13, \"invitation_id\": 22}',0,'2026-07-29 08:35:57'),(42,6,'project_invitation','Bạn được mời tham gia dự án ád.','{\"project_id\": 8, \"invitation_id\": 23}',0,'2026-07-29 08:37:37'),(43,9,'project_invitation','Bạn được mời tham gia dự án ád.','{\"project_id\": 8, \"invitation_id\": 24}',0,'2026-07-29 08:38:00'),(44,6,'project_invitation','Bạn được mời tham gia dự án ád.','{\"project_id\": 8, \"invitation_id\": 25}',0,'2026-07-29 08:39:20'),(45,10,'project_invitation','Bạn được mời tham gia dự án ád.','{\"project_id\": 8, \"invitation_id\": 26}',0,'2026-07-29 08:39:35'),(46,9,'task','Báº¡n Ä‘Æ°á»£c giao nhiá»‡m vá»¥ má»›i: task1','{\"task_id\": 23, \"project_id\": 7}',0,'2026-07-29 08:52:17'),(47,6,'task','Báº¡n Ä‘Æ°á»£c giao nhiá»‡m vá»¥ má»›i: thiet ke web','{\"task_id\": 24, \"project_id\": 7}',0,'2026-07-29 09:51:39'),(48,8,'task','Báº¡n Ä‘Æ°á»£c giao nhiá»‡m vá»¥ má»›i: thiet ke web','{\"task_id\": 25, \"project_id\": 7}',0,'2026-07-29 09:51:39'),(49,9,'task','Báº¡n Ä‘Æ°á»£c giao nhiá»‡m vá»¥ má»›i: thiet ke web','{\"task_id\": 26, \"project_id\": 7}',0,'2026-07-29 09:51:39'),(50,6,'task','Báº¡n Ä‘Æ°á»£c giao nhiá»‡m vá»¥ má»›i: tìm one piece','{\"task_id\": 27, \"project_id\": 14}',0,'2026-07-31 04:40:52'),(51,6,'task','Báº¡n Ä‘Æ°á»£c giao nhiá»‡m vá»¥ má»›i: tìm nhạc hay','{\"task_id\": 28, \"project_id\": 14}',0,'2026-07-31 04:58:33'),(52,9,'task','Nhiệm vụ ggg đã được đánh dấu hoàn thành.','{\"task_id\": 14, \"project_id\": 9}',0,'2026-07-31 05:03:20'),(53,8,'project_invitation','Bạn được mời tham gia dự án chẳng nhớ đã qua bao mùa giao thừa, mà mình mãi mất nhau.','{\"project_id\": 14, \"invitation_id\": 27}',0,'2026-07-31 05:37:04'),(54,9,'project_invitation','Bạn được mời tham gia dự án chẳng nhớ đã qua bao mùa giao thừa, mà mình mãi mất nhau.','{\"project_id\": 14, \"invitation_id\": 28}',0,'2026-07-31 05:38:00'),(55,10,'project_invitation','Bạn được mời tham gia dự án chẳng nhớ đã qua bao mùa giao thừa, mà mình mãi mất nhau.','{\"project_id\": 14, \"invitation_id\": 29}',0,'2026-07-31 05:38:23'),(56,10,'project_invitation','Bạn được mời tham gia dự án chẳng nhớ đã qua bao mùa giao thừa, mà mình mãi mất nhau.','{\"project_id\": 14, \"invitation_id\": 30}',0,'2026-07-31 05:44:06'),(57,8,'project_invitation','Bạn được mời tham gia dự án chẳng nhớ đã qua bao mùa giao thừa, mà mình mãi mất nhau.','{\"project_id\": 14, \"invitation_id\": 31}',0,'2026-07-31 06:12:52'),(58,9,'project_invitation','Bạn được mời tham gia dự án chẳng nhớ đã qua bao mùa giao thừa, mà mình mãi mất nhau.','{\"project_id\": 14, \"invitation_id\": 32}',0,'2026-07-31 06:13:09'),(59,6,'task','Báº¡n Ä‘Æ°á»£c giao nhiá»‡m vá»¥ má»›i: Xây dựng giao diện đăng nhập','{\"task_id\": 29, \"project_id\": 16}',0,'2026-07-31 08:44:03'),(60,8,'project_invitation','Bạn được mời tham gia dự án Lập trình di động.','{\"project_id\": 16, \"invitation_id\": 33}',0,'2026-07-31 08:48:16'),(61,10,'project_invitation','Bạn được mời tham gia dự án Lập trình di động.','{\"project_id\": 16, \"invitation_id\": 34}',0,'2026-07-31 08:48:22'),(62,6,'task','Báº¡n Ä‘Æ°á»£c giao nhiá»‡m vá»¥ má»›i: h088','{\"task_id\": 32, \"project_id\": 16}',0,'2026-08-03 18:25:53'),(63,6,'task','Báº¡n Ä‘Æ°á»£c giao nhiá»‡m vá»¥ má»›i: mua bánh kẹo','{\"task_id\": 34, \"project_id\": 17}',0,'2026-08-03 18:29:25'),(64,6,'task','Báº¡n Ä‘Æ°á»£c giao nhiá»‡m vá»¥ má»›i: mua váy tặng sn','{\"task_id\": 35, \"project_id\": 17}',0,'2026-08-03 18:30:33'),(65,8,'project_message','Bạn có tin nhắn mới ở dự án ád.','{\"message_id\": 2, \"project_id\": 8}',0,'2026-08-05 05:08:46'),(66,9,'project_message','Bạn có tin nhắn mới ở dự án ád.','{\"message_id\": 2, \"project_id\": 8}',0,'2026-08-05 05:08:46'),(67,10,'project_message','Bạn có tin nhắn mới ở dự án ád.','{\"message_id\": 2, \"project_id\": 8}',0,'2026-08-05 05:08:46'),(68,6,'project_message','Bạn có tin nhắn mới ở dự án ád.','{\"message_id\": 3, \"project_id\": 8}',0,'2026-08-05 05:09:13'),(69,9,'project_message','Bạn có tin nhắn mới ở dự án ád.','{\"message_id\": 3, \"project_id\": 8}',0,'2026-08-05 05:09:13'),(70,10,'project_message','Bạn có tin nhắn mới ở dự án ád.','{\"message_id\": 3, \"project_id\": 8}',0,'2026-08-05 05:09:13');
+INSERT INTO `notifications` VALUES (8,8,'project_invitation','Bạn được mời tham gia dự án hhhh.','{\"project_id\": 7, \"invitation_id\": 1}',1,'2026-07-27 17:27:05'),(9,6,'task','Bạn được giao nhiệm vụ mới: lllllhh','{\"task_id\": 11, \"project_id\": 7}',0,'2026-07-27 17:34:34'),(10,8,'task','Bạn được giao nhiệm vụ mới: test','{\"task_id\": 12, \"project_id\": 7}',1,'2026-07-29 04:36:29'),(11,8,'task','Nhiệm vụ test đã được đánh dấu hoàn thành.','{\"task_id\": 12, \"project_id\": 7}',1,'2026-07-29 04:37:03'),(12,6,'task','Bạn được giao nhiệm vụ mới: bnj','{\"task_id\": 13, \"project_id\": 7}',0,'2026-07-29 04:37:44'),(13,9,'project_invitation','Bạn được mời tham gia dự án hhhh.','{\"project_id\": 7, \"invitation_id\": 2}',0,'2026-07-29 04:39:21'),(14,8,'project_invitation','Bạn được mời tham gia dự án qqqqq.','{\"project_id\": 9, \"invitation_id\": 3}',1,'2026-07-29 04:41:44'),(15,9,'project_invitation','Bạn được mời tham gia dự án qqqqq.','{\"project_id\": 9, \"invitation_id\": 4}',0,'2026-07-29 04:41:44'),(16,9,'task','Bạn được giao nhiệm vụ mới: ggg','{\"task_id\": 14, \"project_id\": 9}',0,'2026-07-29 04:43:23'),(17,8,'project_invitation','Bạn được mời tham gia dự án tt55zz.','{\"project_id\": 10, \"invitation_id\": 5}',1,'2026-07-29 04:50:23'),(18,9,'project_invitation','Bạn được mời tham gia dự án qwerzop.','{\"project_id\": 11, \"invitation_id\": 6}',0,'2026-07-29 04:54:17'),(19,6,'project_invitation','Bạn được mời tham gia dự án tk q.','{\"project_id\": 12, \"invitation_id\": 7}',0,'2026-07-29 04:58:00'),(20,9,'project_invitation','Bạn được mời tham gia dự án tk q.','{\"project_id\": 12, \"invitation_id\": 8}',0,'2026-07-29 04:58:25'),(21,8,'project_invitation','Bạn được mời tham gia dự án tk q.','{\"project_id\": 12, \"invitation_id\": 9}',1,'2026-07-29 05:04:22'),(22,8,'task','Bạn được giao nhiệm vụ mới: ruu','{\"task_id\": 15, \"project_id\": 7}',1,'2026-07-29 06:07:09'),(23,6,'task','Nhiệm vụ bnj đã được đánh dấu hoàn thành.','{\"task_id\": 13, \"project_id\": 7}',0,'2026-07-29 06:42:57'),(24,6,'task','Nhiệm vụ bnj đã được đánh dấu hoàn thành.','{\"task_id\": 13, \"project_id\": 7}',0,'2026-07-29 07:02:18'),(25,6,'task','Nhiệm vụ bnj đã được đánh dấu hoàn thành.','{\"task_id\": 13, \"project_id\": 7}',0,'2026-07-29 07:02:49'),(26,6,'task','Nhiệm vụ bnj đã được đánh dấu hoàn thành.','{\"task_id\": 13, \"project_id\": 7}',0,'2026-07-29 07:21:27'),(27,8,'task','Bạn được giao nhiệm vụ mới: ts2','{\"task_id\": 17, \"project_id\": 11}',1,'2026-07-29 07:28:39'),(28,6,'task','Bạn được giao nhiệm vụ mới: f hk klobtxr','{\"task_id\": 20, \"project_id\": 9}',0,'2026-07-29 07:43:22'),(29,6,'task','Bạn được giao nhiệm vụ mới: 5xr6ctih h i hivy7vhhvhu bhi','{\"task_id\": 21, \"project_id\": 9}',0,'2026-07-29 07:44:01'),(30,6,'project_invitation','Bạn được mời tham gia dự án ád.','{\"project_id\": 8, \"invitation_id\": 11}',0,'2026-07-29 07:48:23'),(31,8,'project_invitation','Bạn được mời tham gia dự án s3zcf5cc5ug.','{\"project_id\": 13, \"invitation_id\": 12}',1,'2026-07-29 07:51:00'),(32,9,'project_invitation','Bạn được mời tham gia dự án s3zcf5cc5ug.','{\"project_id\": 13, \"invitation_id\": 13}',0,'2026-07-29 07:51:00'),(33,10,'project_invitation','Bạn được mời tham gia dự án s3zcf5cc5ug.','{\"project_id\": 13, \"invitation_id\": 14}',0,'2026-07-29 07:51:00'),(34,8,'project_invitation','Bạn được mời tham gia dự án s3zcf5cc5ug.','{\"project_id\": 13, \"invitation_id\": 15}',1,'2026-07-29 07:57:40'),(35,6,'project_invitation','Bạn được mời tham gia dự án ád.','{\"project_id\": 8, \"invitation_id\": 16}',0,'2026-07-29 08:13:46'),(36,6,'task','Báº¡n Ä‘Æ°á»£c giao nhiá»‡m vá»¥ má»›i: yyui','{\"task_id\": 22, \"project_id\": 13}',0,'2026-07-29 08:14:34'),(37,8,'project_invitation','Bạn được mời tham gia dự án qqqqq.','{\"project_id\": 9, \"invitation_id\": 17}',1,'2026-07-29 08:15:40'),(38,8,'project_invitation','Bạn được mời tham gia dự án s3zcf5cc5ug.','{\"project_id\": 13, \"invitation_id\": 18}',1,'2026-07-29 08:16:29'),(39,8,'project_invitation','Bạn được mời tham gia dự án s3zcf5cc5ug.','{\"project_id\": 13, \"invitation_id\": 19}',1,'2026-07-29 08:21:33'),(40,8,'project_invitation','Bạn được mời tham gia dự án s3zcf5cc5ug.','{\"project_id\": 13, \"invitation_id\": 21}',1,'2026-07-29 08:29:31'),(41,8,'project_invitation','Bạn được mời tham gia dự án s3zcf5cc5ug.','{\"project_id\": 13, \"invitation_id\": 22}',1,'2026-07-29 08:35:57'),(42,6,'project_invitation','Bạn được mời tham gia dự án ád.','{\"project_id\": 8, \"invitation_id\": 23}',0,'2026-07-29 08:37:37'),(43,9,'project_invitation','Bạn được mời tham gia dự án ád.','{\"project_id\": 8, \"invitation_id\": 24}',0,'2026-07-29 08:38:00'),(44,6,'project_invitation','Bạn được mời tham gia dự án ád.','{\"project_id\": 8, \"invitation_id\": 25}',0,'2026-07-29 08:39:20'),(45,10,'project_invitation','Bạn được mời tham gia dự án ád.','{\"project_id\": 8, \"invitation_id\": 26}',0,'2026-07-29 08:39:35'),(46,9,'task','Báº¡n Ä‘Æ°á»£c giao nhiá»‡m vá»¥ má»›i: task1','{\"task_id\": 23, \"project_id\": 7}',0,'2026-07-29 08:52:17'),(47,6,'task','Báº¡n Ä‘Æ°á»£c giao nhiá»‡m vá»¥ má»›i: thiet ke web','{\"task_id\": 24, \"project_id\": 7}',0,'2026-07-29 09:51:39'),(48,8,'task','Báº¡n Ä‘Æ°á»£c giao nhiá»‡m vá»¥ má»›i: thiet ke web','{\"task_id\": 25, \"project_id\": 7}',1,'2026-07-29 09:51:39'),(49,9,'task','Báº¡n Ä‘Æ°á»£c giao nhiá»‡m vá»¥ má»›i: thiet ke web','{\"task_id\": 26, \"project_id\": 7}',0,'2026-07-29 09:51:39'),(50,6,'task','Báº¡n Ä‘Æ°á»£c giao nhiá»‡m vá»¥ má»›i: tìm one piece','{\"task_id\": 27, \"project_id\": 14}',0,'2026-07-31 04:40:52'),(51,6,'task','Báº¡n Ä‘Æ°á»£c giao nhiá»‡m vá»¥ má»›i: tìm nhạc hay','{\"task_id\": 28, \"project_id\": 14}',0,'2026-07-31 04:58:33'),(52,9,'task','Nhiệm vụ ggg đã được đánh dấu hoàn thành.','{\"task_id\": 14, \"project_id\": 9}',0,'2026-07-31 05:03:20'),(53,8,'project_invitation','Bạn được mời tham gia dự án chẳng nhớ đã qua bao mùa giao thừa, mà mình mãi mất nhau.','{\"project_id\": 14, \"invitation_id\": 27}',1,'2026-07-31 05:37:04'),(54,9,'project_invitation','Bạn được mời tham gia dự án chẳng nhớ đã qua bao mùa giao thừa, mà mình mãi mất nhau.','{\"project_id\": 14, \"invitation_id\": 28}',0,'2026-07-31 05:38:00'),(55,10,'project_invitation','Bạn được mời tham gia dự án chẳng nhớ đã qua bao mùa giao thừa, mà mình mãi mất nhau.','{\"project_id\": 14, \"invitation_id\": 29}',0,'2026-07-31 05:38:23'),(56,10,'project_invitation','Bạn được mời tham gia dự án chẳng nhớ đã qua bao mùa giao thừa, mà mình mãi mất nhau.','{\"project_id\": 14, \"invitation_id\": 30}',0,'2026-07-31 05:44:06'),(57,8,'project_invitation','Bạn được mời tham gia dự án chẳng nhớ đã qua bao mùa giao thừa, mà mình mãi mất nhau.','{\"project_id\": 14, \"invitation_id\": 31}',1,'2026-07-31 06:12:52'),(58,9,'project_invitation','Bạn được mời tham gia dự án chẳng nhớ đã qua bao mùa giao thừa, mà mình mãi mất nhau.','{\"project_id\": 14, \"invitation_id\": 32}',0,'2026-07-31 06:13:09'),(59,6,'task','Báº¡n Ä‘Æ°á»£c giao nhiá»‡m vá»¥ má»›i: Xây dựng giao diện đăng nhập','{\"task_id\": 29, \"project_id\": 16}',0,'2026-07-31 08:44:03'),(60,8,'project_invitation','Bạn được mời tham gia dự án Lập trình di động.','{\"project_id\": 16, \"invitation_id\": 33}',1,'2026-07-31 08:48:16'),(61,10,'project_invitation','Bạn được mời tham gia dự án Lập trình di động.','{\"project_id\": 16, \"invitation_id\": 34}',0,'2026-07-31 08:48:22'),(62,6,'task','Báº¡n Ä‘Æ°á»£c giao nhiá»‡m vá»¥ má»›i: h088','{\"task_id\": 32, \"project_id\": 16}',0,'2026-08-03 18:25:53'),(63,6,'task','Báº¡n Ä‘Æ°á»£c giao nhiá»‡m vá»¥ má»›i: mua bánh kẹo','{\"task_id\": 34, \"project_id\": 17}',0,'2026-08-03 18:29:25'),(64,6,'task','Báº¡n Ä‘Æ°á»£c giao nhiá»‡m vá»¥ má»›i: mua váy tặng sn','{\"task_id\": 35, \"project_id\": 17}',0,'2026-08-03 18:30:33'),(65,8,'project_message','Bạn có tin nhắn mới ở dự án ád.','{\"message_id\": 2, \"project_id\": 8}',1,'2026-08-05 05:08:46'),(66,9,'project_message','Bạn có tin nhắn mới ở dự án ád.','{\"message_id\": 2, \"project_id\": 8}',0,'2026-08-05 05:08:46'),(67,10,'project_message','Bạn có tin nhắn mới ở dự án ád.','{\"message_id\": 2, \"project_id\": 8}',0,'2026-08-05 05:08:46'),(68,6,'project_message','Bạn có tin nhắn mới ở dự án ád.','{\"message_id\": 3, \"project_id\": 8}',0,'2026-08-05 05:09:13'),(69,9,'project_message','Bạn có tin nhắn mới ở dự án ád.','{\"message_id\": 3, \"project_id\": 8}',0,'2026-08-05 05:09:13'),(70,10,'project_message','Bạn có tin nhắn mới ở dự án ád.','{\"message_id\": 3, \"project_id\": 8}',0,'2026-08-05 05:09:13'),(71,6,'task','Nhiệm vụ h088 đã được đánh dấu hoàn thành.','{\"task_id\": 32, \"project_id\": 16}',0,'2026-08-11 04:34:28'),(72,6,'task','Nhiệm vụ h088 đã được đánh dấu hoàn thành.','{\"task_id\": 32, \"project_id\": 16}',0,'2026-08-11 04:34:49'),(73,6,'task','Nhiệm vụ h088 đã được đánh dấu hoàn thành.','{\"task_id\": 32, \"project_id\": 16}',1,'2026-08-11 04:34:53'),(74,6,'task','Nhiệm vụ h088 đã được đánh dấu hoàn thành.','{\"task_id\": 32, \"project_id\": 16}',0,'2026-08-11 04:38:51'),(75,6,'task','Nhiệm vụ h088 đã được đánh dấu hoàn thành.','{\"task_id\": 32, \"project_id\": 16}',1,'2026-08-11 04:42:01'),(76,6,'task','Nhiệm vụ h088 đã được đánh dấu hoàn thành.','{\"task_id\": 32, \"project_id\": 16}',0,'2026-08-11 04:42:04');
 /*!40000 ALTER TABLE `notifications` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -257,10 +320,14 @@ CREATE TABLE `projects` (
   `status` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT 'planning',
   `start_date` date DEFAULT NULL,
   `end_date` date DEFAULT NULL,
+  `completed_at` datetime DEFAULT NULL,
+  `completed_by` int DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `owner_id` (`owner_id`),
+  KEY `projects_completed_by_fk` (`completed_by`),
+  CONSTRAINT `projects_completed_by_fk` FOREIGN KEY (`completed_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
   CONSTRAINT `projects_ibfk_1` FOREIGN KEY (`owner_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=18 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -271,7 +338,7 @@ CREATE TABLE `projects` (
 
 LOCK TABLES `projects` WRITE;
 /*!40000 ALTER TABLE `projects` DISABLE KEYS */;
-INSERT INTO `projects` VALUES (8,'ád','zuop',8,'planning','2026-07-29','2026-07-31','2026-07-29 04:10:54','2026-07-29 04:10:54'),(10,'tt55zz','ttfgvb',9,'planning','2026-07-29','2026-07-31','2026-07-29 04:50:06','2026-07-29 04:50:06'),(11,'qwerzop','dfhkk',8,'planning','2026-07-29','2026-07-31','2026-07-29 04:53:53','2026-07-29 04:53:53'),(12,'tk q','qqq',10,'planning','2026-07-29','2026-07-31','2026-07-29 04:57:43','2026-07-29 04:57:43'),(16,'Lập trình di động','Xây dựng ứng dụng di động để quản lý dự án.',6,'planning','2026-07-31',NULL,'2026-07-31 08:42:35','2026-07-31 08:42:35'),(17,'sinh nhật thu','tạo những thứ hoàn toàn snvv',6,'planning','2026-08-03',NULL,'2026-08-03 18:28:29','2026-08-03 18:28:29');
+INSERT INTO `projects` VALUES (8,'ád','zuop',8,'completed','2026-07-29','2026-07-31',NULL,NULL,'2026-07-29 04:10:54','2026-08-11 02:44:11'),(10,'tt55zz','ttfgvb',9,'planning','2026-07-29','2026-07-31',NULL,NULL,'2026-07-29 04:50:06','2026-07-29 04:50:06'),(11,'qwerzop','dfhkk',8,'completed','2026-07-29','2026-07-31',NULL,NULL,'2026-07-29 04:53:53','2026-08-11 02:44:01'),(12,'tk q','qqq',10,'planning','2026-07-29','2026-07-31',NULL,NULL,'2026-07-29 04:57:43','2026-07-29 04:57:43'),(16,'Lập trình di động','Xây dựng ứng dụng di động để quản lý dự án.',6,'planning','2026-07-31',NULL,NULL,NULL,'2026-07-31 08:42:35','2026-07-31 08:42:35'),(17,'sinh nhật thu','tạo những thứ hoàn toàn snvv',6,'planning','2026-08-03',NULL,NULL,NULL,'2026-08-03 18:28:29','2026-08-03 18:28:29');
 /*!40000 ALTER TABLE `projects` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -323,7 +390,7 @@ CREATE TABLE `task_attachments` (
   KEY `uploader_id` (`uploader_id`),
   CONSTRAINT `task_attachments_task_fk` FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON DELETE CASCADE,
   CONSTRAINT `task_attachments_uploader_fk` FOREIGN KEY (`uploader_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
-) ENGINE=InnoDB AUTO_INCREMENT=14 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=15 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -332,6 +399,7 @@ CREATE TABLE `task_attachments` (
 
 LOCK TABLES `task_attachments` WRITE;
 /*!40000 ALTER TABLE `task_attachments` DISABLE KEYS */;
+INSERT INTO `task_attachments` VALUES (14,19,8,'Screenshot_20260811_035646.jpg','/upload/file/1786396890106_103474265_Screenshot_20260811_035646.jpg','image',NULL,271324,'task','2026-08-11 04:21:30');
 /*!40000 ALTER TABLE `task_attachments` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -418,7 +486,7 @@ CREATE TABLE `tasks` (
   KEY `assignee_id` (`assignee_id`),
   CONSTRAINT `tasks_ibfk_1` FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE,
   CONSTRAINT `tasks_ibfk_2` FOREIGN KEY (`assignee_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
-) ENGINE=InnoDB AUTO_INCREMENT=36 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=37 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -427,7 +495,7 @@ CREATE TABLE `tasks` (
 
 LOCK TABLES `tasks` WRITE;
 /*!40000 ALTER TABLE `tasks` DISABLE KEYS */;
-INSERT INTO `tasks` VALUES (16,11,'ts1','zz',NULL,NULL,'2026-08-21','todo','2026-07-29 07:28:11','2026-07-29 07:28:11'),(17,11,'ts2','bts',8,NULL,'2026-08-03','todo','2026-07-29 07:28:39','2026-07-29 07:28:39'),(18,11,'ts3',NULL,NULL,NULL,'2026-07-31','todo','2026-07-29 07:29:08','2026-07-29 07:29:08'),(19,11,'rti',NULL,NULL,NULL,'2026-07-31','todo','2026-07-29 07:31:50','2026-07-29 07:31:50'),(31,16,'hhhh','task team',NULL,'2026-08-03','2026-08-07','todo','2026-08-03 18:25:18','2026-08-03 18:25:18'),(32,16,'h088','no',6,'2026-08-03','2026-08-07','todo','2026-08-03 18:25:53','2026-08-03 18:25:53'),(33,17,'mua bánh kem',NULL,NULL,'2026-08-07','2026-08-07','todo','2026-08-03 18:29:00','2026-08-03 18:29:00'),(34,17,'mua bánh kẹo',NULL,6,'2026-08-06','2026-08-07','todo','2026-08-03 18:29:25','2026-08-03 18:29:25'),(35,17,'mua váy tặng sn',NULL,6,'2026-08-03','2026-08-07','todo','2026-08-03 18:30:33','2026-08-03 18:30:33');
+INSERT INTO `tasks` VALUES (16,11,'ts1','zz',NULL,NULL,'2026-08-21','todo','2026-07-29 07:28:11','2026-07-29 07:28:11'),(17,11,'ts2','bts',8,NULL,'2026-08-03','todo','2026-07-29 07:28:39','2026-07-29 07:28:39'),(18,11,'ts3',NULL,NULL,NULL,'2026-07-31','todo','2026-07-29 07:29:08','2026-07-29 07:29:08'),(19,11,'rti',NULL,NULL,NULL,'2026-07-31','todo','2026-07-29 07:31:50','2026-07-29 07:31:50'),(31,16,'hhhh','task team',NULL,'2026-08-03','2026-08-07','done','2026-08-03 18:25:18','2026-08-11 04:43:01'),(32,16,'h088','no',6,'2026-08-03','2026-08-07','done','2026-08-03 18:25:53','2026-08-11 04:42:04'),(33,17,'mua bánh kem',NULL,NULL,'2026-08-07','2026-08-07','todo','2026-08-03 18:29:00','2026-08-03 18:29:00'),(34,17,'mua bánh kẹo',NULL,6,'2026-08-06','2026-08-07','todo','2026-08-03 18:29:25','2026-08-03 18:29:25'),(35,17,'mua váy tặng sn',NULL,6,'2026-08-03','2026-08-07','done','2026-08-03 18:30:33','2026-08-11 04:46:42');
 /*!40000 ALTER TABLE `tasks` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -464,7 +532,7 @@ CREATE TABLE `users` (
 
 LOCK TABLES `users` WRITE;
 /*!40000 ALTER TABLE `users` DISABLE KEYS */;
-INSERT INTO `users` VALUES (1,'admin@company.com','$2y$10$fakehash123','Quản trị viên',NULL,'1990-01-10','Đại Học Bình Dương, TP. Thủ Dầu Một, Bình Dương','0901000001','2026-07-08 21:27:57','2026-07-10 02:57:16',1),(2,'manager@company.com','$2y$10$fakehash456','Nguyễn Văn An',NULL,'1995-03-15','123 Đường ABC, Quận 1, TP. Hồ Chí Minh','0987654321','2026-07-08 21:27:57','2026-07-08 21:27:57',2),(6,'hongquy@gmail.com','$2b$10$KUIeBaRVhNv8fS9HhUuFS.OHIaUSJqFljE4FxNG1D8AxbkeZzd2by','Phạm Hồng Quý',NULL,'2002-07-18','Thuận Giao, TP. Hồ Chí Minh',NULL,'2026-07-08 23:48:06','2026-08-03 18:23:17',2),(7,'kha2000@gmail.com','$2b$10$7Xv7uVjk0zhkMqPJm5QhIuULXTglD6h5kCuz405Udu82ZEQRW2SLG','Nguyễn Văn Kha',NULL,'2000-05-20','Dĩ An, Bình Dương','0912345678','2026-07-17 08:08:29','2026-07-17 08:08:57',2),(8,'test@gmail.com','$2b$10$gsCqWwmw7LkXrLNIjXAONu/NWy1Fqhc5Qe/iVh7aWqdGTJPKPWEIS','Trần Thị B',NULL,'2001-09-08','Thủ Đức, TP. Hồ Chí Minh','0934567890','2026-07-27 01:05:57','2026-08-05 05:09:09',2),(9,'testq@gmail.com','$2b$10$K/WltxjWX2wrxFeKRjhDHOmj0njwpxdY1A6XpPtahMTeCahGCvA/K','Lê Văn C',NULL,'2002-11-22','Thuận An, Bình Dương','0945678901','2026-07-29 04:12:58','2026-07-31 08:49:11',2),(10,'q@gmail.com','$2b$10$H.aVX.Ty0Agbt5iH8akSOufM2LjQr1wRVkGvb2RKIGxaOuNfjv9Sy','Phạm Thị D',NULL,'1999-12-05','Quận 9, TP. Hồ Chí Minh','0956789012','2026-07-29 04:57:06','2026-07-31 08:49:27',2);
+INSERT INTO `users` VALUES (1,'admin@company.com','$2y$10$fakehash123','Quản trị viên',NULL,'1990-01-10','Đại Học Bình Dương, TP. Thủ Dầu Một, Bình Dương','0901000001','2026-07-08 21:27:57','2026-07-10 02:57:16',1),(2,'manager@company.com','$2y$10$fakehash456','Nguyễn Văn An',NULL,'1995-03-15','123 Đường ABC, Quận 1, TP. Hồ Chí Minh','0987654321','2026-07-08 21:27:57','2026-07-08 21:27:57',2),(6,'hongquy@gmail.com','$2b$10$KUIeBaRVhNv8fS9HhUuFS.OHIaUSJqFljE4FxNG1D8AxbkeZzd2by','Phạm Hồng Quý',NULL,'2002-07-18','Thuận Giao, TP. Hồ Chí Minh',NULL,'2026-07-08 23:48:06','2026-08-11 04:44:18',2),(7,'kha2000@gmail.com','$2b$10$7Xv7uVjk0zhkMqPJm5QhIuULXTglD6h5kCuz405Udu82ZEQRW2SLG','Nguyễn Văn Kha',NULL,'2000-05-20','Dĩ An, Bình Dương','0912345678','2026-07-17 08:08:29','2026-07-17 08:08:57',2),(8,'test@gmail.com','$2b$10$gsCqWwmw7LkXrLNIjXAONu/NWy1Fqhc5Qe/iVh7aWqdGTJPKPWEIS','Trần Thị B',NULL,'2001-09-08','Thủ Đức, TP. Hồ Chí Minh','0934567890','2026-07-27 01:05:57','2026-08-05 05:09:09',2),(9,'testq@gmail.com','$2b$10$K/WltxjWX2wrxFeKRjhDHOmj0njwpxdY1A6XpPtahMTeCahGCvA/K','Lê Văn C',NULL,'2002-11-22','Thuận An, Bình Dương','0945678901','2026-07-29 04:12:58','2026-07-31 08:49:11',2),(10,'q@gmail.com','$2b$10$H.aVX.Ty0Agbt5iH8akSOufM2LjQr1wRVkGvb2RKIGxaOuNfjv9Sy','Phạm Thị D',NULL,'1999-12-05','Quận 9, TP. Hồ Chí Minh','0956789012','2026-07-29 04:57:06','2026-07-31 08:49:27',2);
 /*!40000 ALTER TABLE `users` ENABLE KEYS */;
 UNLOCK TABLES;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
@@ -477,4 +545,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2026-08-05  5:11:14
+-- Dump completed on 2026-08-11  4:52:08

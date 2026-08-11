@@ -259,6 +259,19 @@ function canManageTask(task) {
     return TASK_MANAGER_ROLE_IDS.includes(Number(task?.project_role_id));
 }
 
+function canWorkOnTask(task, userId) {
+    if (!task) return false;
+    if (!task.assignee_id) return true;
+    return Number(task.assignee_id) === Number(userId);
+}
+
+function taskWorkForbiddenResponse(res) {
+    return res.status(403).json({
+        success: false,
+        message: 'Nhiệm vụ này không được giao cho bạn. Bạn chỉ có quyền xem.'
+    });
+}
+
 async function getSubtasks(taskId, connection = pool) {
     if (!(await tableExists(connection, 'task_subtasks'))) return [];
     const [rows] = await connection.query(
@@ -300,14 +313,44 @@ async function getComments(taskId, currentUserId, connection = pool) {
     return rows.map((row) => mapComment(row, currentUserId));
 }
 
+async function getProjectMembers(projectId, connection = pool) {
+    const [rows] = await connection.query(
+        `SELECT pm.user_id AS id, u.name, u.email, pm.project_role_id,
+                pr.name AS role_name, pm.joined_at
+         FROM project_members pm
+         INNER JOIN users u ON u.id = pm.user_id
+         LEFT JOIN project_roles pr ON pr.id = pm.project_role_id
+         WHERE pm.project_id = ?
+         ORDER BY
+            CASE pm.project_role_id
+                WHEN 1 THEN 0
+                WHEN 2 THEN 1
+                ELSE 2
+            END,
+            u.name ASC`,
+        [projectId]
+    );
+
+    return rows.map((row) => ({
+        id: row.id,
+        user_id: row.id,
+        name: row.name,
+        email: row.email,
+        project_role_id: row.project_role_id,
+        role_name: row.role_name,
+        joined_at: row.joined_at
+    }));
+}
+
 async function buildTaskDetail(taskId, userId, connection = pool) {
     const task = await getAccessibleTask(taskId, userId, connection);
     if (!task) return null;
 
-    const [subtasks, attachments, comments] = await Promise.all([
+    const [subtasks, attachments, comments, members] = await Promise.all([
         getSubtasks(taskId, connection),
         getAttachments(taskId, connection),
-        getComments(taskId, userId, connection)
+        getComments(taskId, userId, connection),
+        getProjectMembers(task.project_id, connection)
     ]);
 
     return {
@@ -323,6 +366,10 @@ async function buildTaskDetail(taskId, userId, connection = pool) {
             color: task.project_color || '#6366F1'
         },
         current_user_id: userId,
+        can_update_work: canWorkOnTask(task, userId),
+        can_manage_task: canManageTask(task),
+        members,
+        assignee_options: members,
         subtasks,
         attachments,
         comments
@@ -410,11 +457,33 @@ router.patch('/:id', async (req, res) => {
             Object.prototype.hasOwnProperty.call(req.body, 'assigneeId')
         ) {
             const assigneeId = Number(req.body.assignee_id || req.body.assigneeId);
+            const nextAssigneeId = Number.isInteger(assigneeId) && assigneeId > 0 ? assigneeId : null;
+
+            if (nextAssigneeId) {
+                const [memberRows] = await pool.query(
+                    `SELECT id
+                     FROM project_members
+                     WHERE project_id = ? AND user_id = ?
+                     LIMIT 1`,
+                    [task.project_id, nextAssigneeId]
+                );
+
+                if (memberRows.length === 0) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Nguoi nhan nhiem vu khong thuoc du an.'
+                    });
+                }
+            }
+
             fields.push('assignee_id = ?');
-            values.push(Number.isInteger(assigneeId) && assigneeId > 0 ? assigneeId : null);
+            values.push(nextAssigneeId);
         }
 
         if (Object.prototype.hasOwnProperty.call(req.body, 'status') || Object.prototype.hasOwnProperty.call(req.body, 'status_code')) {
+            if (!canWorkOnTask(task, req.user.id)) {
+                return taskWorkForbiddenResponse(res);
+            }
             const status = normalizeTaskStatus(req.body.status || req.body.status_code);
             if (!TASK_STATUSES.includes(status)) {
                 return res.status(400).json({ success: false, message: 'Trang thai nhiem vu khong hop le.' });
@@ -464,6 +533,10 @@ router.patch('/:id/status', async (req, res) => {
         const task = await getAccessibleTask(taskId, req.user.id);
         if (!task) {
             return res.status(404).json({ success: false, message: 'Không tìm thấy nhiệm vụ hoặc bạn không có quyền sửa.' });
+        }
+
+        if (!canWorkOnTask(task, req.user.id)) {
+            return taskWorkForbiddenResponse(res);
         }
 
         await pool.query('UPDATE tasks SET status = ? WHERE id = ?', [status, taskId]);
@@ -555,6 +628,10 @@ router.post('/:id/subtasks', async (req, res) => {
             return res.status(404).json({ success: false, message: 'Không tìm thấy nhiệm vụ hoặc bạn không có quyền sửa.' });
         }
 
+        if (!canWorkOnTask(task, req.user.id)) {
+            return taskWorkForbiddenResponse(res);
+        }
+
         if (!(await tableExists(pool, 'task_subtasks'))) {
             return res.status(501).json({ success: false, message: 'Database chưa có bảng task_subtasks.' });
         }
@@ -601,6 +678,10 @@ router.patch('/:id/subtasks/:subtaskId', async (req, res) => {
             return res.status(404).json({ success: false, message: 'Không tìm thấy nhiệm vụ hoặc bạn không có quyền sửa.' });
         }
 
+        if (!canWorkOnTask(task, req.user.id)) {
+            return taskWorkForbiddenResponse(res);
+        }
+
         const fields = [];
         const values = [];
         if (Object.prototype.hasOwnProperty.call(req.body, 'is_completed')) {
@@ -625,6 +706,7 @@ router.patch('/:id/subtasks/:subtaskId', async (req, res) => {
         }
 
         values.push(subtaskId, taskId);
+
         const [result] = await pool.query(
             `UPDATE task_subtasks SET ${fields.join(', ')} WHERE id = ? AND task_id = ?`,
             values
@@ -668,6 +750,10 @@ router.delete('/:id/subtasks/:subtaskId', async (req, res) => {
         const task = await getAccessibleTask(taskId, req.user.id);
         if (!task) {
             return res.status(404).json({ success: false, message: 'Không tìm thấy nhiệm vụ hoặc bạn không có quyền sửa.' });
+        }
+
+        if (!canWorkOnTask(task, req.user.id)) {
+            return taskWorkForbiddenResponse(res);
         }
 
         const [result] = await pool.query(
@@ -715,6 +801,10 @@ router.post('/:id/attachments', async (req, res) => {
         const task = await getAccessibleTask(taskId, req.user.id);
         if (!task) {
             return res.status(404).json({ success: false, message: 'Không tìm thấy nhiệm vụ hoặc bạn không có quyền sửa.' });
+        }
+
+        if (!canWorkOnTask(task, req.user.id)) {
+            return taskWorkForbiddenResponse(res);
         }
 
         if (!(await tableExists(pool, 'task_attachments'))) {
@@ -768,6 +858,10 @@ router.delete('/:id/attachments/:attachmentId', async (req, res) => {
             return res.status(404).json({ success: false, message: 'Không tìm thấy nhiệm vụ hoặc bạn không có quyền sửa.' });
         }
 
+        if (!canWorkOnTask(task, req.user.id)) {
+            return taskWorkForbiddenResponse(res);
+        }
+
         const [result] = await pool.query(
             'DELETE FROM task_attachments WHERE id = ? AND task_id = ?',
             [attachmentId, taskId]
@@ -806,6 +900,10 @@ router.post('/:id/comments', async (req, res) => {
         const task = await getAccessibleTask(taskId, req.user.id);
         if (!task) {
             return res.status(404).json({ success: false, message: 'Không tìm thấy nhiệm vụ hoặc bạn không có quyền bình luận.' });
+        }
+
+        if (!canWorkOnTask(task, req.user.id)) {
+            return taskWorkForbiddenResponse(res);
         }
 
         await ensureTaskCommentsTable(pool);
@@ -861,6 +959,10 @@ router.patch('/:id/comments/:commentId', async (req, res) => {
             return res.status(404).json({ success: false, message: 'Không tìm thấy nhiệm vụ hoặc bạn không có quyền xem.' });
         }
 
+        if (!canWorkOnTask(task, req.user.id)) {
+            return taskWorkForbiddenResponse(res);
+        }
+
         await ensureTaskCommentsTable(pool);
 
         const [result] = await pool.query(
@@ -911,6 +1013,10 @@ router.delete('/:id/comments/:commentId', async (req, res) => {
         const task = await getAccessibleTask(taskId, req.user.id);
         if (!task) {
             return res.status(404).json({ success: false, message: 'Không tìm thấy nhiệm vụ hoặc bạn không có quyền xem.' });
+        }
+
+        if (!canWorkOnTask(task, req.user.id)) {
+            return taskWorkForbiddenResponse(res);
         }
 
         await ensureTaskCommentsTable(pool);

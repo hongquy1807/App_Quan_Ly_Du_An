@@ -341,9 +341,34 @@ class _TimelineScreenState extends State<TimelineScreen> {
             const SizedBox(height: 16),
             Expanded(
               child: _isLoadingTimeline
-                  ? _buildLoadingState()
+                  ? RefreshIndicator(
+                      onRefresh: _loadTimeline,
+                      color: theme.primaryColor,
+                      child: ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: [
+                          SizedBox(
+                            height: MediaQuery.of(context).size.height * 0.45,
+                            child: _buildLoadingState(),
+                          ),
+                        ],
+                      ),
+                    )
                   : _timelineError != null
-                      ? _buildErrorState()
+                      ? RefreshIndicator(
+                          onRefresh: _loadTimeline,
+                          color: theme.primaryColor,
+                          child: ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            children: [
+                              SizedBox(
+                                height:
+                                    MediaQuery.of(context).size.height * 0.55,
+                                child: _buildErrorState(),
+                              ),
+                            ],
+                          ),
+                        )
                       : _selectedMode == 'overview'
                           ? _buildOverviewContent(weekDays, weekEnd)
                           : _buildDetailContent(),
@@ -620,26 +645,32 @@ class _TimelineScreenState extends State<TimelineScreen> {
       return !selectedDay.isBefore(startDay) && !selectedDay.isAfter(endDay);
     }).toList();
 
-    return ListView(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-      children: [
-        _buildDetailControls(weekEnd, weekDays),
-        const SizedBox(height: 16),
-        Text(
-          '${_weekdayFull(selectedDay)} - ${DateFormat('dd/MM/yyyy').format(selectedDay)}',
-          style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-            color: _timelineText,
-          ),
+    return RefreshIndicator(
+      onRefresh: _loadTimeline,
+      color: appThemeController.primaryColor,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
         ),
-        const SizedBox(height: 12),
-        if (tasksInSelectedDay.isEmpty)
-          _buildDetailEmptyState()
-        else
-          ...tasksInSelectedDay.map(_buildDetailTaskCard),
-      ],
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+        children: [
+          _buildDetailControls(weekEnd, weekDays),
+          const SizedBox(height: 16),
+          Text(
+            '${_weekdayFull(selectedDay)} - ${DateFormat('dd/MM/yyyy').format(selectedDay)}',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: _timelineText,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (tasksInSelectedDay.isEmpty)
+            _buildDetailEmptyState()
+          else
+            ...tasksInSelectedDay.map(_buildDetailTaskCard),
+        ],
+      ),
     );
   }
 
@@ -883,134 +914,144 @@ class _TimelineScreenState extends State<TimelineScreen> {
     const dayWidth = 92.0;
     const chartWidth = dayWidth * 7;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+    return RefreshIndicator(
+      onRefresh: _loadTimeline,
+      color: theme.primaryColor,
       child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        child: SizedBox(
-          width: chartWidth,
-          child: Column(
-            children: [
-              _buildWeekHeader(weekDays, dayWidth),
-              const SizedBox(height: 8),
-              if (_filteredTasks.isEmpty)
-                _buildOverviewEmptyRow(dayWidth)
-              else
-                ..._filteredTasks.map((task) {
-                final start = task['startDate'] as DateTime;
-                final end = task['endDate'] as DateTime;
-                final color = _deadlineColor(end);
-                final weekStart = weekDays.first;
-                final weekEnd = weekDays.last;
-                final visibleStart = start.isBefore(weekStart) ? weekStart : start;
-                final visibleEnd = end.isAfter(weekEnd) ? weekEnd : end;
-                final startIndex = visibleStart.difference(weekStart).inDays;
-                final endIndex = visibleEnd.difference(weekStart).inDays;
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          child: SizedBox(
+            width: chartWidth,
+            child: Column(
+              children: [
+                _buildWeekHeader(weekDays, dayWidth),
+                const SizedBox(height: 8),
+                if (_filteredTasks.isEmpty)
+                  _buildOverviewEmptyRow(dayWidth)
+                else
+                  ..._filteredTasks.map((task) {
+                    final start = task['startDate'] as DateTime;
+                    final end = task['endDate'] as DateTime;
+                    final color = _deadlineColor(end);
+                    final weekStart = weekDays.first;
+                    final weekEnd = weekDays.last;
+                    final visibleStart =
+                        start.isBefore(weekStart) ? weekStart : start;
+                    final visibleEnd = end.isAfter(weekEnd) ? weekEnd : end;
+                    final startIndex = visibleStart.difference(weekStart).inDays;
+                    final endIndex = visibleEnd.difference(weekStart).inDays;
 
-                final leftOffset = startIndex * dayWidth;
-                final width = ((endIndex - startIndex + 1) * dayWidth)
-                    .clamp(dayWidth, dayWidth * 7)
-                    .toDouble();
-                final projectName = _projectName(task['projectName']);
+                    final leftOffset = startIndex * dayWidth;
+                    final width = ((endIndex - startIndex + 1) * dayWidth)
+                        .clamp(dayWidth, dayWidth * 7)
+                        .toDouble();
+                    final projectName = _projectName(task['projectName']);
 
-                return Container(
-                  height: 70,
-                  margin: const EdgeInsets.only(bottom: 10),
-                  decoration: BoxDecoration(
-                    color: _timelineSurface,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.grey.withValues(alpha: 0.05),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
+                    return Container(
+                      height: 70,
+                      margin: const EdgeInsets.only(bottom: 10),
+                      decoration: BoxDecoration(
+                        color: _timelineSurface,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.grey.withValues(alpha: 0.05),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  child: Stack(
-                    children: [
-                      Row(
-                        children: List.generate(7, (index) {
-                          final day = weekDays[index];
-                          final isWeekend =
-                              day.weekday == 6 || day.weekday == 7;
-                          return SizedBox(
-                            width: dayWidth,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                border: Border(
-                                  right: BorderSide(
-                                    color: appThemeController.isDark
-                                        ? Colors.white.withValues(alpha: 0.08)
-                                        : _timelineBorder,
-                                    width: 0.5,
+                      child: Stack(
+                        children: [
+                          Row(
+                            children: List.generate(7, (index) {
+                              final day = weekDays[index];
+                              final isWeekend =
+                                  day.weekday == 6 || day.weekday == 7;
+                              return SizedBox(
+                                width: dayWidth,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    border: Border(
+                                      right: BorderSide(
+                                        color: appThemeController.isDark
+                                            ? Colors.white.withValues(alpha: 0.08)
+                                            : _timelineBorder,
+                                        width: 0.5,
+                                      ),
+                                    ),
+                                    color: isWeekend
+                                        ? (appThemeController.isDark
+                                            ? theme.backgroundColor.withValues(
+                                                alpha: 0.55,
+                                              )
+                                            : _timelineSoft.withValues(
+                                                alpha: 0.55,
+                                              ))
+                                        : null,
                                   ),
                                 ),
-                                color: isWeekend
-                                    ? (appThemeController.isDark
-                                        ? theme.backgroundColor.withValues(
-                                            alpha: 0.55,
-                                          )
-                                        : _timelineSoft.withValues(alpha: 0.55))
-                                    : null,
+                              );
+                            }),
+                          ),
+                          Positioned(
+                            left: leftOffset + 6,
+                            top: 9,
+                            width: width - 12,
+                            child: Container(
+                              height: 52,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: color,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    _taskTitle(task['title']),
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  if (projectName.isNotEmpty) ...[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      projectName,
+                                      overflow: TextOverflow.ellipsis,
+                                      maxLines: 1,
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: Colors.white.withValues(alpha: 0.9),
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ],
                               ),
                             ),
-                          );
-                        }),
+                          ),
+                        ],
                       ),
-                      Positioned(
-                        left: leftOffset + 6,
-                        top: 9,
-                        width: width - 12,
-                        child: Container(
-                          height: 52,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: color,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Text(
-                                _taskTitle(task['title']),
-                                overflow: TextOverflow.ellipsis,
-                                maxLines: 1,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              if (projectName.isNotEmpty) ...[
-                                const SizedBox(height: 2),
-                                Text(
-                                  projectName,
-                                  overflow: TextOverflow.ellipsis,
-                                  maxLines: 1,
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.9),
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }),
-            ],
+                    );
+                  }),
+              ],
+            ),
           ),
         ),
       ),

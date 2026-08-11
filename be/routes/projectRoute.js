@@ -121,6 +121,9 @@ function mapProject(row) {
         status: row.status,
         start_date: row.start_date,
         end_date: row.end_date,
+        completed_at: row.completed_at,
+        completed_by: row.completed_by,
+        completed_by_name: row.completed_by_name,
         project_role_id: row.project_role_id,
         role_name: row.role_name,
         color: getProjectColor(row.id),
@@ -157,7 +160,9 @@ function mapInvitation(row) {
 async function getProjectById(projectId, userId, connection = pool) {
     const [rows] = await connection.query(
         `SELECT p.id, p.name, p.description, p.owner_id, owner.name AS owner_name,
-                p.status, p.start_date, p.end_date, p.created_at, p.updated_at,
+                p.status, p.start_date, p.end_date,
+                p.completed_at, p.completed_by, completed_user.name AS completed_by_name,
+                p.created_at, p.updated_at,
                 pm.project_role_id, pr.name AS role_name,
                 COUNT(DISTINCT all_pm.user_id) AS members,
                 COUNT(DISTINCT t.id) AS total_tasks,
@@ -168,11 +173,14 @@ async function getProjectById(projectId, userId, connection = pool) {
                  ON pm.project_id = p.id AND pm.user_id = ?
          LEFT JOIN project_roles pr ON pr.id = pm.project_role_id
          LEFT JOIN users owner ON owner.id = p.owner_id
+         LEFT JOIN users completed_user ON completed_user.id = p.completed_by
          LEFT JOIN project_members all_pm ON all_pm.project_id = p.id
          LEFT JOIN tasks t ON t.project_id = p.id
          WHERE p.id = ?
          GROUP BY p.id, p.name, p.description, p.owner_id, owner.name,
-                  p.status, p.start_date, p.end_date, p.created_at, p.updated_at,
+                  p.status, p.start_date, p.end_date,
+                  p.completed_at, p.completed_by, completed_user.name,
+                  p.created_at, p.updated_at,
                   pm.project_role_id, pr.name
          LIMIT 1`,
         [userId, projectId]
@@ -216,7 +224,9 @@ router.get('/', async (req, res) => {
 
         const [rows] = await pool.query(
             `SELECT p.id, p.name, p.description, p.owner_id, owner.name AS owner_name,
-                    p.status, p.start_date, p.end_date, p.created_at, p.updated_at,
+                    p.status, p.start_date, p.end_date,
+                    p.completed_at, p.completed_by, completed_user.name AS completed_by_name,
+                    p.created_at, p.updated_at,
                     pm.project_role_id, pr.name AS role_name,
                     COUNT(DISTINCT all_pm.user_id) AS members,
                     COUNT(DISTINCT t.id) AS total_tasks,
@@ -227,10 +237,14 @@ router.get('/', async (req, res) => {
                      ON pm.project_id = p.id AND pm.user_id = ?
              LEFT JOIN project_roles pr ON pr.id = pm.project_role_id
              LEFT JOIN users owner ON owner.id = p.owner_id
+             LEFT JOIN users completed_user ON completed_user.id = p.completed_by
              LEFT JOIN project_members all_pm ON all_pm.project_id = p.id
              LEFT JOIN tasks t ON t.project_id = p.id
+             WHERE COALESCE(p.status, 'planning') <> 'completed'
              GROUP BY p.id, p.name, p.description, p.owner_id, owner.name,
-                      p.status, p.start_date, p.end_date, p.created_at, p.updated_at,
+                      p.status, p.start_date, p.end_date,
+                      p.completed_at, p.completed_by, completed_user.name,
+                      p.created_at, p.updated_at,
                       pm.project_role_id, pr.name
              ORDER BY p.name ${sort}`,
             [userId]
@@ -245,6 +259,60 @@ router.get('/', async (req, res) => {
         return res.status(500).json({
             success: false,
             message: 'Không thể lấy danh sách dự án.',
+            error: err.message
+        });
+    }
+});
+
+// PATCH /api/projects/:id/complete
+// Chỉ trưởng nhóm mới được đánh dấu hoàn thành dự án.
+router.patch('/:id/complete', async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const projectId = Number(req.params.id);
+
+        if (!projectId) {
+            return res.status(400).json({
+                success: false,
+                message: 'ID dự án không hợp lệ.'
+            });
+        }
+
+        const canComplete = await isProjectLeader(projectId, userId);
+        if (!canComplete) {
+            return res.status(403).json({
+                success: false,
+                message: 'Chỉ trưởng nhóm mới được hoàn thành dự án.'
+            });
+        }
+
+        const [result] = await pool.query(
+            `UPDATE projects
+             SET status = 'completed',
+                 completed_at = NOW(),
+                 completed_by = ?
+             WHERE id = ?`,
+            [userId, projectId]
+        );
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy dự án.'
+            });
+        }
+
+        const project = await getProjectById(projectId, userId);
+        return res.json({
+            success: true,
+            message: 'Dự án đã được đánh dấu hoàn thành.',
+            data: project
+        });
+    } catch (err) {
+        console.error('Lỗi hoàn thành dự án:', err);
+        return res.status(500).json({
+            success: false,
+            message: 'Không thể hoàn thành dự án.',
             error: err.message
         });
     }
@@ -287,6 +355,55 @@ router.get('/invitations', async (req, res) => {
         return res.status(500).json({
             success: false,
             message: 'Không thể lấy lời mời tham gia dự án.',
+            error: err.message
+        });
+    }
+});
+
+// GET /api/projects/completed
+// Danh sách dự án đã hoàn thành mà user từng tham gia.
+router.get('/completed', async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const sort = req.query.sort === 'asc' ? 'ASC' : 'DESC';
+
+        const [rows] = await pool.query(
+            `SELECT p.id, p.name, p.description, p.owner_id, owner.name AS owner_name,
+                    p.status, p.start_date, p.end_date,
+                    p.completed_at, p.completed_by, completed_user.name AS completed_by_name,
+                    p.created_at, p.updated_at,
+                    pm.project_role_id, pr.name AS role_name,
+                    COUNT(DISTINCT all_pm.user_id) AS members,
+                    COUNT(DISTINCT t.id) AS total_tasks,
+                    COUNT(DISTINCT CASE WHEN t.status = 'done' THEN t.id END) AS completed_tasks,
+                    COUNT(DISTINCT CASE WHEN t.status <> 'done' OR t.status IS NULL THEN t.id END) AS incomplete_tasks
+             FROM projects p
+             INNER JOIN project_members pm
+                     ON pm.project_id = p.id AND pm.user_id = ?
+             LEFT JOIN project_roles pr ON pr.id = pm.project_role_id
+             LEFT JOIN users owner ON owner.id = p.owner_id
+             LEFT JOIN users completed_user ON completed_user.id = p.completed_by
+             LEFT JOIN project_members all_pm ON all_pm.project_id = p.id
+             LEFT JOIN tasks t ON t.project_id = p.id
+             WHERE p.status = 'completed'
+             GROUP BY p.id, p.name, p.description, p.owner_id, owner.name,
+                      p.status, p.start_date, p.end_date,
+                      p.completed_at, p.completed_by, completed_user.name,
+                      p.created_at, p.updated_at,
+                      pm.project_role_id, pr.name
+             ORDER BY COALESCE(p.completed_at, p.updated_at) ${sort}, p.name ASC`,
+            [userId]
+        );
+
+        return res.json({
+            success: true,
+            data: rows.map(mapProject)
+        });
+    } catch (err) {
+        console.error('Lỗi lấy dự án đã hoàn thành:', err);
+        return res.status(500).json({
+            success: false,
+            message: 'Không thể lấy dự án đã hoàn thành.',
             error: err.message
         });
     }

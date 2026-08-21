@@ -1,5 +1,6 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:file_picker/file_picker.dart';
 import 'app_theme_controller.dart';
 import 'services/project_service.dart';
 import 'utils/color_utils.dart';
@@ -177,7 +178,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     if (isCompleted) return _t('Hoàn thành', 'Completed', '已完成');
     switch (statusCode) {
       case 'in_progress':
-        return _t('Đã nhận nhiệm vụ', 'Accepted task', '已接受任务');
+        return _t('Đã nhận', 'Accepted', '已接受');
       case 'review':
         return _t('Chờ duyệt', 'Pending review', '待审核');
       case 'todo':
@@ -188,7 +189,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
 
     switch (status) {
       case 'Đang làm':
-        return _t('Đã nhận nhiệm vụ', 'Accepted task', '已接受任务');
+        return _t('Đã nhận', 'Accepted', '已接受');
       case 'Chưa bắt đầu':
         return _t('Chưa nhận', 'Not accepted', '未接受');
       case 'Trễ hạn':
@@ -571,6 +572,40 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     }
   }
 
+  Future<void> _exportProjectReport() async {
+    final project = _projectDetail.isNotEmpty ? _projectDetail : widget.project;
+    final projectId = project['id']?.toString() ?? '';
+    if (projectId.isEmpty) return;
+
+    try {
+      final file = await _projectService.downloadCompletedProjectReport(projectId);
+      final savedPath = await FilePicker.platform.saveFile(
+        dialogTitle: _t('Lưu báo cáo dự án', 'Save project report', '保存项目报告'),
+        fileName: file.fileName,
+        bytes: file.bytes,
+      );
+      if (!mounted || savedPath == null) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_t('Đã xuất báo cáo', 'Report exported', '报告已导出'))),
+      );
+    } catch (err) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(err.toString())),
+      );
+    }
+  }
+
+  void _handleProjectAction(String action) {
+    if (action == 'add_task') {
+      _openCreateTask();
+      return;
+    }
+    if (action == 'report') {
+      _exportProjectReport();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = appThemeController;
@@ -692,14 +727,10 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                           });
                         },
                       ),
-                      const SizedBox(width: 12),
-                      _buildQuickInfo(
-                        icon: Icons.add_task_rounded,
-                        label: _t('Thêm nhiệm vụ', 'Add task', '添加任务'),
-                        value: '+',
-                        color: color,
-                        onTap: _openCreateTask,
-                      ),
+                      if (_canManageTasks) ...[
+                        const SizedBox(width: 12),
+                        _buildProjectActionMenu(color),
+                      ],
                     ],
                   ),
                 ],
@@ -968,6 +999,69 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProjectActionMenu(Color color) {
+    final theme = appThemeController;
+    return Expanded(
+      child: PopupMenuButton<String>(
+        onSelected: _handleProjectAction,
+        color: theme.surfaceColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        itemBuilder: (context) => [
+          PopupMenuItem(
+            value: 'add_task',
+            child: Row(
+              children: [
+                Icon(Icons.add_task_rounded, size: 20, color: color),
+                const SizedBox(width: 10),
+                Text(
+                  _t('Thêm công việc', 'Add task', '添加任务'),
+                  style: TextStyle(color: theme.textColor),
+                ),
+              ],
+            ),
+          ),
+          PopupMenuItem(
+            value: 'report',
+            child: Row(
+              children: [
+                Icon(Icons.file_download_rounded, size: 20, color: color),
+                const SizedBox(width: 10),
+                Text(
+                  _t('Xuất báo cáo', 'Export report', '导出报告'),
+                  style: TextStyle(color: theme.textColor),
+                ),
+              ],
+            ),
+          ),
+        ],
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withValues(alpha: 0.12)),
+          ),
+          child: Column(
+            children: [
+              Icon(Icons.more_horiz_rounded, color: color, size: 28),
+              const SizedBox(height: 6),
+              Text(
+                _t('Tùy chọn', 'Options', '选项'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: theme.mutedTextColor,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1311,10 +1405,12 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                   ),
                   child: Text(
                     isCompleted
-                        ? '✅ ${_t('Hoàn thành', 'Completed', '已完成')}'
+                        ? _t('Hoàn thành', 'Completed', '已完成')
                         : isOverdue
-                        ? '⏰ ${_t('Trễ hạn', 'Overdue', '已逾期')}'
-                        : '🔄 ${_statusText(task['status'], isCompleted, task['statusCode'])}',
+                        ? _t('Trễ hạn', 'Overdue', '已逾期')
+                        : _statusText(task['status'], isCompleted, task['statusCode']),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,

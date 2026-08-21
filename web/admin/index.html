@@ -4,10 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Admin Dashboard - QuanLyDuAn</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,600;14..32,700;14..32,800;14..32,900&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./css/admin.css" />
+    <script src="./js/admin.js" defer></script>
   </head>
   <body>
     <div class="app-shell">
+      <!-- ===== SIDEBAR ===== -->
       <aside class="sidebar">
         <div class="brand">
           <div class="brand-mark">Q</div>
@@ -42,10 +47,12 @@
         </button>
       </aside>
 
+      <!-- ===== MAIN CONTENT ===== -->
       <main class="content">
+        <!-- Topbar -->
         <header class="topbar">
-          <div>
-            <p class="eyebrow">Bảng điều khiển</p>
+          <div class="topbar-left">
+            <span class="eyebrow">Bảng điều khiển</span>
             <h1 id="pageTitle">Tổng quan hệ thống</h1>
           </div>
           <div class="admin-chip">
@@ -57,12 +64,13 @@
           </div>
         </header>
 
+        <!-- OVERVIEW -->
         <section class="page-section active" id="overviewSection">
           <section class="stats-grid" aria-label="Thống kê nhanh">
             <article class="stat-card project">
               <div class="stat-icon">▣</div>
               <div>
-                <span class="stat-label">Tổng dự án của app</span>
+                <span class="stat-label">Tổng dự án</span>
                 <strong class="stat-value" id="totalProjects">--</strong>
               </div>
             </article>
@@ -70,7 +78,7 @@
             <article class="stat-card users">
               <div class="stat-icon">◉</div>
               <div>
-                <span class="stat-label">Thành viên tham gia app</span>
+                <span class="stat-label">Thành viên</span>
                 <strong class="stat-value" id="totalUsers">--</strong>
               </div>
             </article>
@@ -132,6 +140,7 @@
           </section>
         </section>
 
+        <!-- USERS -->
         <section class="page-section" id="usersSection">
           <article class="panel management-panel">
             <div class="management-toolbar">
@@ -147,11 +156,7 @@
             <div class="table-tools">
               <label class="search-box">
                 <span>⌕</span>
-                <input
-                  id="userSearch"
-                  type="search"
-                  placeholder="Tìm theo tên hoặc email..."
-                />
+                <input id="userSearch" type="search" placeholder="Tìm theo tên hoặc email..." />
               </label>
               <span class="result-count" id="userResultCount">0 người dùng</span>
             </div>
@@ -181,6 +186,7 @@
           </article>
         </section>
 
+        <!-- PROJECTS -->
         <section class="page-section" id="projectsSection">
           <article class="panel management-panel">
             <div class="management-toolbar">
@@ -196,11 +202,7 @@
             <div class="table-tools">
               <label class="search-box">
                 <span>⌕</span>
-                <input
-                  id="projectSearch"
-                  type="search"
-                  placeholder="Tìm theo tên dự án hoặc trưởng nhóm..."
-                />
+                <input id="projectSearch" type="search" placeholder="Tìm theo tên dự án hoặc trưởng nhóm..." />
               </label>
               <span class="result-count" id="projectResultCount">0 dự án</span>
             </div>
@@ -231,6 +233,7 @@
           </article>
         </section>
 
+        <!-- FEEDBACKS -->
         <section class="page-section" id="feedbacksSection">
           <article class="panel management-panel">
             <div class="management-toolbar">
@@ -243,11 +246,7 @@
             <div class="table-tools">
               <label class="search-box">
                 <span>⌕</span>
-                <input
-                  id="feedbackSearch"
-                  type="search"
-                  placeholder="Tìm theo tiêu đề, nội dung hoặc người gửi..."
-                />
+                <input id="feedbackSearch" type="search" placeholder="Tìm theo tiêu đề, nội dung hoặc người gửi..." />
               </label>
               <select class="filter-select" id="feedbackStatusFilter">
                 <option value="all">Tất cả trạng thái</option>
@@ -286,6 +285,9 @@
       </main>
     </div>
 
+    <!-- ===== MODALS ===== -->
+
+    <!-- User Modal -->
     <div class="modal-backdrop" id="userModal" aria-hidden="true">
       <form class="modal-card" id="userForm">
         <div class="modal-header">
@@ -322,6 +324,7 @@
       </form>
     </div>
 
+    <!-- Project Modal -->
     <div class="modal-backdrop" id="projectModal" aria-hidden="true">
       <form class="modal-card" id="projectForm">
         <div class="modal-header">
@@ -367,6 +370,7 @@
       </form>
     </div>
 
+    <!-- Feedback Modal -->
     <div class="modal-backdrop" id="feedbackModal" aria-hidden="true">
       <div class="modal-card feedback-detail-card">
         <div class="modal-header">
@@ -378,7 +382,7 @@
           <h3 id="feedbackDetailTitle"></h3>
           <p class="detail-label">Người gửi</p>
           <p id="feedbackDetailSender"></p>
-          <p class="detail-label">Nội dung góp ý</p>
+          <p class="detail-label">Nội dung</p>
           <p class="feedback-content" id="feedbackDetailContent"></p>
           <p class="detail-label">File đính kèm</p>
           <div class="attachment-list" id="feedbackDetailAttachments"></div>
@@ -401,6 +405,5 @@
       </div>
     </div>
 
-    <script src="./script.js"></script>
   </body>
 </html>

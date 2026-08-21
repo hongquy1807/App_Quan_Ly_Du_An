@@ -199,6 +199,8 @@ function mapAttachment(row) {
         id: row.id,
         task_id: row.task_id,
         uploader_id: row.uploader_id,
+        attachment_scope: row.attachment_scope || 'task',
+        scope: row.attachment_scope || 'task',
         file_name: row.file_name,
         file_url: row.file_url,
         file_type: row.file_type,
@@ -252,6 +254,18 @@ async function ensureTaskStartDateColumn(connection) {
     await connection.query(
         'ALTER TABLE tasks ADD COLUMN start_date DATE NULL AFTER assignee_id'
     );
+}
+
+async function ensureTaskAttachmentScopeColumn(connection) {
+    if (!(await tableExists(connection, 'task_attachments'))) return false;
+    if (await columnExists(connection, 'task_attachments', 'attachment_scope')) return true;
+    await connection.query(
+        `ALTER TABLE task_attachments
+         ADD COLUMN attachment_scope ENUM('task','submission')
+         COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'task'
+         AFTER file_size`
+    );
+    return true;
 }
 
 async function getProject(projectId, userId) {
@@ -364,10 +378,11 @@ async function getAttachmentsByTaskIds(taskIds, connection = pool) {
     if (taskIds.length === 0 || !(await tableExists(connection, 'task_attachments'))) {
         return {};
     }
+    await ensureTaskAttachmentScopeColumn(connection);
 
     const [rows] = await connection.query(
         `SELECT id, task_id, uploader_id, file_name, file_url, file_type,
-                mime_type, file_size, created_at
+                mime_type, file_size, attachment_scope, created_at
          FROM task_attachments
          WHERE task_id IN (?)
          ORDER BY id ASC`,

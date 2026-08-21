@@ -94,7 +94,7 @@ function mapTask(row) {
 
 async function getCurrentUser(userId) {
     const [rows] = await pool.query(
-        `SELECT u.id, u.email, u.name, u.created_at, u.last_login_at,
+        `SELECT u.id, u.email, u.name, u.avatar, u.created_at, u.last_login_at,
                 u.system_role_id, r.name AS role_name
          FROM users u
          LEFT JOIN roles r ON r.id = u.system_role_id
@@ -119,7 +119,8 @@ async function getProjects(userId) {
          LEFT JOIN project_roles pr ON pr.id = pm.project_role_id
          LEFT JOIN project_members all_pm ON all_pm.project_id = p.id
          LEFT JOIN tasks t ON t.project_id = p.id
-         WHERE p.owner_id = ? OR pm.user_id = ?
+         WHERE (p.owner_id = ? OR pm.user_id = ?)
+           AND COALESCE(p.status, 'planning') <> 'completed'
          GROUP BY p.id, p.name, p.description, p.owner_id, p.status,
                   p.start_date, p.end_date, pm.project_role_id, pr.name
          ORDER BY p.updated_at DESC, p.created_at DESC`,
@@ -136,6 +137,7 @@ async function getAssignedTasks(userId) {
          FROM tasks t
          INNER JOIN projects p ON p.id = t.project_id
          WHERE t.assignee_id = ?
+           AND COALESCE(p.status, 'planning') <> 'completed'
          ORDER BY
             CASE WHEN t.due_date IS NULL THEN 1 ELSE 0 END,
             t.due_date ASC,

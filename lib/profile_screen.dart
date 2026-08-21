@@ -1,10 +1,13 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:io';
+
+import 'package:flutter/material.dart';
 
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_theme_controller.dart';
 import 'completed_projects_screen.dart';
+import 'electronic_cv_screen.dart';
 import 'feedback_screen.dart';
 import 'friends_screen.dart';
 import 'services/auth_service.dart';
@@ -95,6 +98,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           'fullName': profile['name']?.toString() ?? '',
           'email': profile['email']?.toString() ?? '',
           'avatar': profile['avatar']?.toString(),
+          'phone': profile['phone']?.toString() ?? '',
           'birthday': profile['birthday']?.toString() ?? '',
           'address': profile['address']?.toString() ?? '',
         };
@@ -179,10 +183,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         '创建和管理你的简历',
                       ),
                       color: const Color(0xFFEC4899),
-                      isLocked: true,
                       onTap: () {
-                        _showLockedFeatureDialog(
-                          _t('CV điện tử', 'Digital CV', '电子简历'),
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ElectronicCvScreen(
+                              userInfo: Map<String, dynamic>.from(_userInfo),
+                            ),
+                          ),
                         );
                       },
                     ),
@@ -578,32 +586,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  void _showLockedFeatureDialog(String featureName) {
-    final theme = appThemeController;
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: theme.surfaceColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(featureName, style: TextStyle(color: theme.textColor)),
-        content: Text(
-          _t(
-            'Tính năng này đang được phát triển!',
-            'This feature is still in development.',
-            '此功能正在开发中。',
-          ),
-          style: TextStyle(color: theme.mutedTextColor),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(_t('Đã hiểu', 'Got it', '知道了')),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showInviteFriendsDialog() {
     final theme = appThemeController;
     showDialog(
@@ -809,8 +791,9 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
     final addressController = TextEditingController(
       text: _userInfo['address']?.toString() ?? '',
     );
-    String? selectedAvatarPath = _userInfo['avatarPath']?.toString();
+    String? selectedAvatarPath;
     var isSheetActive = true;
+    var isSavingProfile = false;
 
     showModalBottomSheet<Map<String, dynamic>>(
       context: context,
@@ -865,18 +848,25 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
                                   CircleAvatar(
                                     radius: 38,
                                     backgroundColor: const Color(0xFF6366F1),
-                                    child: Text(
-                                      fullNameController.text.trim().isNotEmpty
-                                          ? fullNameController.text
-                                              .trim()[0]
-                                              .toUpperCase()
-                                          : 'U',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 28,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
+                                    backgroundImage: selectedAvatarPath == null
+                                        ? null
+                                        : FileImage(File(selectedAvatarPath!)),
+                                    child: selectedAvatarPath != null
+                                        ? null
+                                        : Text(
+                                            fullNameController.text
+                                                    .trim()
+                                                    .isNotEmpty
+                                                ? fullNameController.text
+                                                    .trim()[0]
+                                                    .toUpperCase()
+                                                : 'U',
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 28,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
                                   ),
                                   Positioned(
                                     right: 0,
@@ -920,57 +910,142 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
                       );
                     },
                   ),
-                  const SizedBox(height: 16),
-                  _EditProfileField(
-                    controller: fullNameController,
-                    label: _t('Họ tên', 'Full name', '姓名'),
-                  ),
-                  _EditProfileField(controller: emailController, label: 'Email'),
-                  _EditProfileField(
-                    controller: phoneController,
-                    label: _t('Số điện thoại', 'Phone number', '电话号码'),
-                  ),
-                  _EditProfileField(
-                    controller: birthdayController,
-                    label: _t('Ngày sinh', 'Birthday', '生日'),
-                  ),
-                  _EditProfileField(
-                    controller: addressController,
-                    label: _t('Địa chỉ', 'Address', '地址'),
-                    maxLines: 2,
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.pop(context, {
-                          ..._userInfo,
-                          'fullName': fullNameController.text.trim(),
-                          'email': emailController.text.trim(),
-                          'phone': phoneController.text.trim(),
-                          'birthday': birthdayController.text.trim(),
-                          'address': addressController.text.trim(),
-                          'avatarPath': selectedAvatarPath,
-                        });
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: theme.primaryColor,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: Text(
-                        _t('Lưu thay đổi', 'Save changes', '保存更改'),
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
+                  StatefulBuilder(
+                    builder: (context, setSheetState) {
+                      return Column(
+                        children: [
+                          const SizedBox(height: 16),
+                          _EditProfileField(
+                            controller: fullNameController,
+                            label: _t('Họ tên', 'Full name', '姓名'),
+                          ),
+                          _EditProfileField(
+                            controller: emailController,
+                            label: 'Email',
+                            enabled: false,
+                          ),
+                          _EditProfileField(
+                            controller: phoneController,
+                            label:
+                                _t('Số điện thoại', 'Phone number', '电话号码'),
+                          ),
+                          _EditProfileField(
+                            controller: birthdayController,
+                            label: _t('Ngày sinh', 'Birthday', '生日'),
+                          ),
+                          _EditProfileField(
+                            controller: addressController,
+                            label: _t('Địa chỉ', 'Address', '地址'),
+                            maxLines: 2,
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            height: 50,
+                            child: ElevatedButton(
+                              onPressed: isSavingProfile
+                                  ? null
+                                  : () async {
+                                      setSheetState(() {
+                                        isSavingProfile = true;
+                                      });
+
+                                      try {
+                                        final profile =
+                                            await _profileService.updateProfile(
+                                          name:
+                                              fullNameController.text.trim(),
+                                          phone: phoneController.text.trim(),
+                                          birthday:
+                                              birthdayController.text.trim(),
+                                          address:
+                                              addressController.text.trim(),
+                                        );
+
+                                        final updatedInfo = {
+                                          ..._userInfo,
+                                          'id': profile['id'],
+                                          'fullName':
+                                              profile['name']?.toString() ??
+                                                  fullNameController.text
+                                                      .trim(),
+                                          'email':
+                                              profile['email']?.toString() ??
+                                                  emailController.text.trim(),
+                                          'phone':
+                                              profile['phone']?.toString() ??
+                                                  phoneController.text.trim(),
+                                          'birthday': profile['birthday']
+                                                  ?.toString() ??
+                                              birthdayController.text.trim(),
+                                          'address':
+                                              profile['address']?.toString() ??
+                                                  addressController.text
+                                                      .trim(),
+                                          'avatar': profile['avatar'] ??
+                                              _userInfo['avatar'],
+                                        };
+
+                                        if (selectedAvatarPath != null) {
+                                          final avatar = await _profileService
+                                              .uploadAvatar(
+                                            selectedAvatarPath!,
+                                          );
+                                          updatedInfo['avatar'] = avatar;
+                                        }
+
+                                        if (!context.mounted) return;
+                                        Navigator.pop(context, updatedInfo);
+                                      } on ApiException catch (err) {
+                                        if (!context.mounted) return;
+                                        setSheetState(() {
+                                          isSavingProfile = false;
+                                        });
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: Text(err.message),
+                                            backgroundColor:
+                                                const Color(0xFFEF4444),
+                                          ),
+                                        );
+                                      }
+                                    },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: theme.primaryColor,
+                                foregroundColor: Colors.white,
+                                disabledBackgroundColor: theme.primaryColor
+                                    .withValues(alpha: 0.45),
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: isSavingProfile
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : Text(
+                                      _t(
+                                        'Lưu thay đổi',
+                                        'Save changes',
+                                        '保存更改',
+                                      ),
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                 ],
               ),
@@ -1004,11 +1079,13 @@ class _EditProfileField extends StatelessWidget {
   final TextEditingController controller;
   final String label;
   final int maxLines;
+  final bool enabled;
 
   const _EditProfileField({
     required this.controller,
     required this.label,
     this.maxLines = 1,
+    this.enabled = true,
   });
 
   @override
@@ -1018,13 +1095,21 @@ class _EditProfileField extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 12),
       child: TextField(
         controller: controller,
+        enabled: enabled,
         maxLines: maxLines,
-        style: TextStyle(color: theme.textColor),
+        style: TextStyle(
+          color: enabled ? theme.textColor : theme.mutedTextColor,
+        ),
         decoration: InputDecoration(
           labelText: label,
           labelStyle: TextStyle(color: theme.mutedTextColor),
           filled: true,
-          fillColor: theme.backgroundColor,
+          fillColor: enabled
+              ? theme.backgroundColor
+              : theme.backgroundColor.withValues(alpha: 0.55),
+          suffixIcon: enabled
+              ? null
+              : Icon(Icons.lock_outline_rounded, color: theme.mutedTextColor),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide(

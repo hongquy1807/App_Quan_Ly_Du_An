@@ -1,5 +1,7 @@
 ﻿import 'dart:convert';
 
+import 'dart:typed_data';
+
 import 'package:http/http.dart' as http;
 
 import 'auth_service.dart';
@@ -121,6 +123,38 @@ class ProjectService {
       return Map<String, dynamic>.from(responseData);
     }
     return data;
+  }
+
+  Future<ProjectReportFile> downloadCompletedProjectReport(
+    String projectId,
+  ) async {
+    try {
+      final headers = await AuthService.authHeaders();
+      final uri = Uri.parse('${AuthService.baseUrl}/projects/$projectId/report');
+      final response = await _client
+          .get(uri, headers: headers)
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final data = _decodeResponse(response.body, response.statusCode);
+        throw ApiException(
+          data['message']?.toString() ?? 'Không thể xuất báo cáo.',
+        );
+      }
+
+      return ProjectReportFile(
+        fileName: _fileNameFromContentDisposition(
+          response.headers['content-disposition'],
+        ),
+        bytes: response.bodyBytes,
+      );
+    } on ApiException {
+      rethrow;
+    } catch (_) {
+      throw ApiException(
+        'Không thể xuất báo cáo. Kiểm tra backend đã chạy chưa.',
+      );
+    }
   }
 
   Future<List<Map<String, dynamic>>> createTask({
@@ -583,6 +617,20 @@ class ProjectService {
     final day = date.day.toString().padLeft(2, '0');
     return '${date.year}-$month-$day';
   }
+
+  String _fileNameFromContentDisposition(String? value) {
+    const fallback = 'bao-cao-du-an.docx';
+    if (value == null || value.isEmpty) return fallback;
+    final match = RegExp(r'filename="?([^";]+)"?').firstMatch(value);
+    return match?.group(1) ?? fallback;
+  }
+}
+
+class ProjectReportFile {
+  const ProjectReportFile({required this.fileName, required this.bytes});
+
+  final String fileName;
+  final Uint8List bytes;
 }
 
 class NumberParser {

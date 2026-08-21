@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import 'app_theme_controller.dart';
 import 'services/auth_service.dart';
@@ -66,16 +66,93 @@ class _NotificationScreenState extends State<NotificationScreen> {
     return {
       ...notification,
       'type': _typeFromApi(notification['type']?.toString()),
-      'title': notification['title']?.toString() ?? 'Thông báo',
-      'message': notification['message']?.toString() ??
-          notification['content']?.toString() ??
-          '',
-      'project': notification['project']?.toString() ?? '',
-      'time': notification['time']?.toString() ?? '',
+      'title': _cleanText(notification['title']?.toString() ?? 'Thông báo'),
+      'message': _cleanText(
+        notification['message']?.toString() ??
+            notification['content']?.toString() ??
+            '',
+      ),
+      'project': _cleanText(notification['project']?.toString() ?? ''),
+      'time': _cleanText(notification['time']?.toString() ?? ''),
       'isUnread': notification['isUnread'] == true ||
           notification['read'] == false ||
           notification['read']?.toString() == '0',
     };
+  }
+
+  String _cleanText(String value) {
+    const replacements = {
+      'Ă¡': 'á',
+      'Ă ': 'à',
+      'Ă¢': 'â',
+      'Ă£': 'ã',
+      'Ă¨': 'è',
+      'Ă©': 'é',
+      'Ăª': 'ê',
+      'Ă¬': 'ì',
+      'Ă­': 'í',
+      'Ă²': 'ò',
+      'Ă³': 'ó',
+      'Ă´': 'ô',
+      'Ăµ': 'õ',
+      'Ă¹': 'ù',
+      'Ăº': 'ú',
+      'Ă½': 'ý',
+      'Ä‘': 'đ',
+      'Ä': 'Đ',
+      'Æ¡': 'ơ',
+      'Æ°': 'ư',
+      'áº¡': 'ạ',
+      'áº£': 'ả',
+      'áº¥': 'ấ',
+      'áº§': 'ầ',
+      'áº©': 'ẩ',
+      'áº«': 'ẫ',
+      'áº­': 'ậ',
+      'áº¯': 'ắ',
+      'áº±': 'ằ',
+      'áº³': 'ẳ',
+      'áºµ': 'ẵ',
+      'áº·': 'ặ',
+      'áº¹': 'ẹ',
+      'áº»': 'ẻ',
+      'áº½': 'ẽ',
+      'áº¿': 'ế',
+      'á»': 'ề',
+      'á»ƒ': 'ể',
+      'á»…': 'ễ',
+      'á»‡': 'ệ',
+      'á»‰': 'ỉ',
+      'á»‹': 'ị',
+      'á»': 'ọ',
+      'á»': 'ỏ',
+      'á»‘': 'ố',
+      'á»“': 'ồ',
+      'á»•': 'ổ',
+      'á»—': 'ỗ',
+      'á»™': 'ộ',
+      'á»›': 'ớ',
+      'á»': 'ờ',
+      'á»Ÿ': 'ở',
+      'á»¡': 'ỡ',
+      'á»£': 'ợ',
+      'á»¥': 'ụ',
+      'á»§': 'ủ',
+      'á»©': 'ứ',
+      'á»«': 'ừ',
+      'á»­': 'ử',
+      'á»¯': 'ữ',
+      'á»±': 'ự',
+      'á»³': 'ỳ',
+      'á»·': 'ỷ',
+      'á»¹': 'ỹ',
+    };
+
+    var result = value;
+    for (final entry in replacements.entries) {
+      result = result.replaceAll(entry.key, entry.value);
+    }
+    return result;
   }
 
   _NotificationType _typeFromApi(String? type) {

@@ -89,6 +89,44 @@ function formatDateOnly(value) {
     return `${day}/${month}/${year}`;
 }
 
+function parseDateOnly(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+
+    const slashMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (slashMatch) {
+        const day = Number(slashMatch[1]);
+        const month = Number(slashMatch[2]);
+        const year = Number(slashMatch[3]);
+        const date = new Date(year, month - 1, day);
+        if (
+            date.getFullYear() === year &&
+            date.getMonth() === month - 1 &&
+            date.getDate() === day
+        ) {
+            return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        }
+        return undefined;
+    }
+
+    const dashMatch = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (dashMatch) {
+        const year = Number(dashMatch[1]);
+        const month = Number(dashMatch[2]);
+        const day = Number(dashMatch[3]);
+        const date = new Date(year, month - 1, day);
+        if (
+            date.getFullYear() === year &&
+            date.getMonth() === month - 1 &&
+            date.getDate() === day
+        ) {
+            return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        }
+    }
+
+    return undefined;
+}
+
 router.use(requireAuth);
 
 // GET /api/profile
@@ -97,7 +135,7 @@ router.get('/', async (req, res) => {
     try {
         const userId = req.user.id;
         const [rows] = await pool.query(
-            `SELECT id, name, email, avatar, birthday, address
+            `SELECT id, name, email, avatar, birthday, address, phone
              FROM users
              WHERE id = ?
              LIMIT 1`,
@@ -119,6 +157,7 @@ router.get('/', async (req, res) => {
                 avatar: user.avatar,
                 name: user.name,
                 email: user.email,
+                phone: user.phone,
                 birthday: formatDateOnly(user.birthday),
                 address: user.address
             }
@@ -128,6 +167,75 @@ router.get('/', async (req, res) => {
         return res.status(500).json({
             success: false,
             message: 'Không thể tải thông tin người dùng.'
+        });
+    }
+});
+
+// PATCH /api/profile
+// Body JSON: { "name", "phone", "birthday", "address" }
+router.patch('/', async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const name = String(req.body?.name || '').trim();
+        const phone = String(req.body?.phone || '').trim() || null;
+        const address = String(req.body?.address || '').trim() || null;
+        const birthday = parseDateOnly(req.body?.birthday);
+
+        if (!name) {
+            return res.status(400).json({
+                success: false,
+                message: 'Vui lòng nhập họ tên.'
+            });
+        }
+
+        if (birthday === undefined) {
+            return res.status(400).json({
+                success: false,
+                message: 'Ngày sinh không hợp lệ. Vui lòng dùng định dạng dd/mm/yyyy.'
+            });
+        }
+
+        const [result] = await pool.query(
+            `UPDATE users
+             SET name = ?, phone = ?, birthday = ?, address = ?
+             WHERE id = ?`,
+            [name, phone, birthday, address, userId]
+        );
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy tài khoản.'
+            });
+        }
+
+        const [rows] = await pool.query(
+            `SELECT id, name, email, avatar, birthday, address, phone
+             FROM users
+             WHERE id = ?
+             LIMIT 1`,
+            [userId]
+        );
+        const user = rows[0];
+
+        return res.json({
+            success: true,
+            message: 'Đã cập nhật thông tin cá nhân.',
+            data: {
+                id: user.id,
+                avatar: user.avatar,
+                name: user.name,
+                email: user.email,
+                phone: user.phone,
+                birthday: formatDateOnly(user.birthday),
+                address: user.address
+            }
+        });
+    } catch (err) {
+        console.error('Update profile API error:', err);
+        return res.status(500).json({
+            success: false,
+            message: 'Không thể cập nhật thông tin cá nhân.'
         });
     }
 });

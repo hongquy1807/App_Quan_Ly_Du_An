@@ -19,6 +19,16 @@ class ProjectChatService {
         .toList();
   }
 
+  Future<List<Map<String, dynamic>>> getFriends() async {
+    final data = await _request(method: 'GET', path: '/project-chat/friends');
+    final friends = data['data'];
+    if (friends is! List) return [];
+    return friends
+        .whereType<Map>()
+        .map((friend) => Map<String, dynamic>.from(friend))
+        .toList();
+  }
+
   Future<Map<String, dynamic>> getMessages(
     int projectId, {
     int limit = 50,
@@ -31,6 +41,19 @@ class ProjectChatService {
     final responseData = data['data'];
     if (responseData is Map) return Map<String, dynamic>.from(responseData);
     return {'project': null, 'messages': <Map<String, dynamic>>[]};
+  }
+
+  Future<Map<String, dynamic>> getDirectMessages(
+    int friendId, {
+    int limit = 50,
+  }) async {
+    final data = await _request(
+      method: 'GET',
+      path: '/project-chat/direct/$friendId/messages?limit=$limit',
+    );
+    final responseData = data['data'];
+    if (responseData is Map) return Map<String, dynamic>.from(responseData);
+    return {'friend': null, 'messages': <Map<String, dynamic>>[]};
   }
 
   Future<Map<String, dynamic>> sendMessage({
@@ -50,6 +73,27 @@ class ProjectChatService {
         if (fileUrl != null && fileUrl.isNotEmpty) 'file_url': fileUrl,
         if (fileName != null && fileName.isNotEmpty) 'file_name': fileName,
         if (fileSize != null) 'file_size': fileSize,
+      },
+    );
+
+    final message = data['data'];
+    if (message is Map) return Map<String, dynamic>.from(message);
+    return data;
+  }
+
+  Future<Map<String, dynamic>> sendDirectMessage({
+    required int friendId,
+    required String content,
+    String? fileUrl,
+    String? fileType,
+  }) async {
+    final data = await _request(
+      method: 'POST',
+      path: '/project-chat/direct/$friendId/messages',
+      body: {
+        'content': content,
+        if (fileUrl != null && fileUrl.isNotEmpty) 'file_url': fileUrl,
+        if (fileType != null && fileType.isNotEmpty) 'file_type': fileType,
       },
     );
 

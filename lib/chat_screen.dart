@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'app_theme_controller.dart';
 import 'services/auth_service.dart';
+import 'services/chatbot_service.dart';
 import 'services/project_chat_service.dart';
 import 'utils/color_utils.dart';
 import 'widgets/app_bottom_navigation.dart';
@@ -19,6 +22,7 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final ProjectChatService _chatService = ProjectChatService();
+  final ChatbotService _chatbotService = ChatbotService();
   // Danh sách dự án
   final List<Map<String, dynamic>> _projects = [
     {
@@ -67,9 +71,11 @@ class _ChatScreenState extends State<ChatScreen> {
   ];
 
   // Trạng thái hiện tại
+  final List<Map<String, dynamic>> _friends = [];
   Map<String, dynamic>? _selectedProject;
   ChatLanguage _language = ChatLanguage.vietnamese;
   bool _showChatbot = false;
+  bool _showFriendChats = false;
   List<Map<String, dynamic>> _messages = [];
   final List<Map<String, dynamic>> _botMessages = [];
   final TextEditingController _messageController = TextEditingController();
@@ -77,10 +83,15 @@ class _ChatScreenState extends State<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
   final ScrollController _botScrollController = ScrollController();
   bool _isLoading = false;
+  bool _isBotLoading = false;
   bool _isLoadingProjects = false;
+  bool _isLoadingFriends = false;
   bool _isLoadingMessages = false;
   String? _projectError;
+  String? _friendError;
   String? _messageError;
+  Timer? _projectPollTimer;
+  Timer? _messagePollTimer;
 
   // Danh sách file đính kèm
   final List<Map<String, dynamic>> _attachments = [];
@@ -91,6 +102,25 @@ class _ChatScreenState extends State<ChatScreen> {
     _loadLanguage();
     _loadBotMessages();
     _loadProjects();
+    _loadFriends();
+    _projectPollTimer = Timer.periodic(
+      const Duration(seconds: 20),
+      (_) {
+        if (!mounted || _showChatbot || _selectedProject != null) return;
+        if (_showFriendChats) {
+          _loadFriends(silent: true);
+        } else {
+          _loadProjects(silent: true);
+        }
+      },
+    );
+    _messagePollTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) {
+        if (!mounted || _showChatbot || _selectedProject == null) return;
+        _loadMessages(silent: true);
+      },
+    );
   }
 
   String _t(String vi, String en, String zh) {
@@ -134,6 +164,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    _projectPollTimer?.cancel();
+    _messagePollTimer?.cancel();
     _messageController.dispose();
     _botMessageController.dispose();
     _scrollController.dispose();
@@ -141,11 +173,13 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-  Future<void> _loadProjects() async {
-    setState(() {
-      _isLoadingProjects = true;
-      _projectError = null;
-    });
+  Future<void> _loadProjects({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _isLoadingProjects = true;
+        _projectError = null;
+      });
+    }
 
     try {
       final projects = await _chatService.getProjects();
@@ -153,11 +187,15 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _projects
           ..clear()
-          ..addAll(projects.map(_mapProject));
-        _isLoadingProjects = false;
+          ..addAll(projects
+              .where((project) =>
+                  project['status']?.toString().toLowerCase() != 'completed')
+              .map(_mapProject));
+        if (!silent) _isLoadingProjects = false;
       });
     } on ApiException catch (err) {
       if (!mounted) return;
+      if (silent) return;
       setState(() {
         _projects.clear();
         _projectError = err.message;
@@ -166,18 +204,53 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _loadMessages() async {
-    final projectId = int.tryParse(_selectedProject?['id']?.toString() ?? '');
-    if (projectId == null) return;
-
-    setState(() {
-      _isLoadingMessages = true;
-      _messageError = null;
-      _messages.clear();
-    });
+  Future<void> _loadFriends({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _isLoadingFriends = true;
+        _friendError = null;
+      });
+    }
 
     try {
-      final data = await _chatService.getMessages(projectId);
+      final friends = await _chatService.getFriends();
+      if (!mounted) return;
+      setState(() {
+        _friends
+          ..clear()
+          ..addAll(friends.map(_mapFriendChat));
+        if (!silent) _isLoadingFriends = false;
+      });
+    } on ApiException catch (err) {
+      if (!mounted) return;
+      if (silent) return;
+      setState(() {
+        _friends.clear();
+        _friendError = err.message;
+        _isLoadingFriends = false;
+      });
+    }
+  }
+
+  Future<void> _loadMessages({bool silent = false}) async {
+    final conversation = _selectedProject;
+    if (conversation == null) return;
+    final conversationId = int.tryParse(conversation['id']?.toString() ?? '');
+    if (conversationId == null) return;
+    final isDirect = conversation['chatType'] == 'direct';
+
+    if (!silent) {
+      setState(() {
+        _isLoadingMessages = true;
+        _messageError = null;
+        _messages.clear();
+      });
+    }
+
+    try {
+      final data = isDirect
+          ? await _chatService.getDirectMessages(conversationId)
+          : await _chatService.getMessages(conversationId);
       final messages = data['messages'];
       if (!mounted) return;
       setState(() {
@@ -187,11 +260,12 @@ class _ChatScreenState extends State<ChatScreen> {
                 .map((message) => _mapMessage(Map<String, dynamic>.from(message)))
                 .toList()
             : [];
-        _isLoadingMessages = false;
+        if (!silent) _isLoadingMessages = false;
       });
-      _scrollToBottom();
+      if (!silent) _scrollToBottom();
     } on ApiException catch (err) {
       if (!mounted) return;
+      if (silent) return;
       setState(() {
         _messageError = err.message;
         _isLoadingMessages = false;
@@ -226,6 +300,36 @@ class _ChatScreenState extends State<ChatScreen> {
           _parseDate(project['updated_at']) ??
           DateTime.now(),
       'unreadCount': int.tryParse(project['unread_count']?.toString() ?? '') ?? 0,
+    };
+  }
+
+  Map<String, dynamic> _mapFriendChat(Map<String, dynamic> friend) {
+    final lastMessage = friend['last_message'];
+    final lastMessageMap = lastMessage is Map
+        ? Map<String, dynamic>.from(lastMessage)
+        : <String, dynamic>{};
+    final friendId = int.tryParse(friend['id']?.toString() ?? '') ?? 0;
+    const colors = [
+      '#6366F1',
+      '#EC4899',
+      '#F59E0B',
+      '#10B981',
+      '#8B5CF6',
+    ];
+
+    return {
+      ...friend,
+      'id': friend['id']?.toString() ?? '',
+      'chatType': 'direct',
+      'name': friend['name']?.toString() ?? _t('Bạn bè', 'Friend', '好友'),
+      'email': friend['email']?.toString() ?? '',
+      'color': colors[friendId % colors.length],
+      'icon': Icons.person_rounded,
+      'memberCount': 2,
+      'lastMessage': lastMessageMap['content']?.toString() ??
+          _t('Chưa có tin nhắn', 'No messages yet', '暂无消息'),
+      'lastTime': _parseDate(lastMessageMap['created_at']) ?? DateTime.now(),
+      'unreadCount': int.tryParse(friend['unread_count']?.toString() ?? '') ?? 0,
     };
   }
 
@@ -265,7 +369,7 @@ class _ChatScreenState extends State<ChatScreen> {
         'content': _t(
           'Chào mọi người! Hôm nay chúng ta sẽ bàn về thiết kế UI nhé.',
           'Hi everyone! Today we will discuss the UI design.',
-          '大家好！今天我们来讨论 UI 设计。',
+          '大家好，今天我们来讨论 UI 设计。',
         ),
         'time': DateTime.now().subtract(const Duration(hours: 3)),
         'isMine': true,
@@ -300,7 +404,7 @@ class _ChatScreenState extends State<ChatScreen> {
         'content': _t(
           'Giao diện đẹp quá! Tôi thấy phần header hơi to, có thể chỉnh lại được không?',
           'The interface looks great! The header feels a bit large. Can we adjust it?',
-          '界面很好看！我觉得顶部区域有点大，可以调整一下吗？',
+          '界面很好看。我觉得顶部区域有点大，可以调整一下吗？',
         ),
         'time': DateTime.now().subtract(const Duration(hours: 2)),
         'isMine': false,
@@ -313,7 +417,7 @@ class _ChatScreenState extends State<ChatScreen> {
         'content': _t(
           'Đã nhận được file thiết kế, cảm ơn bạn!',
           'Design file received, thank you!',
-          '已收到设计文件，谢谢！',
+          '已收到设计文件，谢谢。',
         ),
         'time': DateTime.now().subtract(const Duration(minutes: 5)),
         'isMine': true,
@@ -338,19 +442,35 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _sendMessage({String? filePath, String? fileType}) async {
     final content = _messageController.text.trim();
     if (content.isEmpty && _attachments.isEmpty) return;
-    final projectId = int.tryParse(_selectedProject?['id']?.toString() ?? '');
-    if (projectId == null) return;
+
+    final conversation = _selectedProject;
+    if (conversation == null) return;
+    final conversationId = int.tryParse(conversation['id']?.toString() ?? '');
+    if (conversationId == null) return;
+    final isDirect = conversation['chatType'] == 'direct';
+
+    final fallbackContent = _t(
+      'Đã gửi một file đính kèm',
+      'Sent an attachment',
+      '已发送一个附件',
+    );
 
     setState(() {
       _isLoading = true;
     });
 
     try {
-      final message = await _chatService.sendMessage(
-        projectId: projectId,
-        content: content.isNotEmpty ? content : 'Đã gửi một file đính kèm',
-        messageType: content.isNotEmpty ? 'text' : 'file',
-      );
+      final message = isDirect
+          ? await _chatService.sendDirectMessage(
+              friendId: conversationId,
+              content: content.isNotEmpty ? content : fallbackContent,
+              fileType: content.isNotEmpty ? null : 'file',
+            )
+          : await _chatService.sendMessage(
+              projectId: conversationId,
+              content: content.isNotEmpty ? content : fallbackContent,
+              messageType: content.isNotEmpty ? 'text' : 'file',
+            );
       if (!mounted) return;
       setState(() {
         _messages.add(_mapMessage(message));
@@ -359,7 +479,11 @@ class _ChatScreenState extends State<ChatScreen> {
         _isLoading = false;
       });
       _scrollToBottom();
-      _loadProjects();
+      if (isDirect) {
+        _loadFriends();
+      } else {
+        _loadProjects();
+      }
     } on ApiException catch (err) {
       if (!mounted) return;
       setState(() {
@@ -420,9 +544,9 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  void _sendBotMessage() {
+  Future<void> _sendBotMessage() async {
     final content = _botMessageController.text.trim();
-    if (content.isEmpty) return;
+    if (content.isEmpty || _isBotLoading) return;
 
     setState(() {
       _botMessages.add({
@@ -431,24 +555,59 @@ class _ChatScreenState extends State<ChatScreen> {
         'time': DateTime.now(),
       });
       _botMessageController.clear();
+      _isBotLoading = true;
     });
     _scrollBotToBottom();
 
-    Future.delayed(const Duration(milliseconds: 400), () {
+    try {
+      final data = await _chatbotService.ask(
+        content,
+        language: _language.name,
+      );
+      final answer = data['answer']?.toString().trim();
+      if (!mounted) return;
+      setState(() {
+        _botMessages.add({
+          'content': (answer == null || answer.isEmpty)
+              ? _t(
+                  'Mình chưa có câu trả lời phù hợp.',
+                  'I do not have a suitable answer yet.',
+                  '我还没有合适的回答。',
+                )
+              : answer,
+          'isMine': false,
+          'time': DateTime.now(),
+        });
+        _isBotLoading = false;
+      });
+      _scrollBotToBottom();
+    } on ApiException catch (err) {
+      if (!mounted) return;
+      setState(() {
+        _botMessages.add({
+          'content': err.message,
+          'isMine': false,
+          'time': DateTime.now(),
+        });
+        _isBotLoading = false;
+      });
+      _scrollBotToBottom();
+    } catch (_) {
       if (!mounted) return;
       setState(() {
         _botMessages.add({
           'content': _t(
-            'Mình đã ghi nhận. Với công việc này, bạn nên kiểm tra deadline, người phụ trách và chia thành các nhiệm vụ nhỏ để dễ theo dõi tiến độ.',
-            'Got it. For this work, you should check the deadline, owner, and break it into smaller tasks to track progress more easily.',
-            '已记录。对于这项工作，你应该检查截止日期、负责人，并拆分成更小的任务以便跟踪进度。',
+            'Không thể kết nối chatbot. Kiểm tra backend và Gemini API key nhé.',
+            'Cannot connect to chatbot. Please check the backend and Gemini API key.',
+            '无法连接聊天机器人。请检查后端和 Gemini API key。',
           ),
           'isMine': false,
           'time': DateTime.now(),
         });
+        _isBotLoading = false;
       });
       _scrollBotToBottom();
-    });
+    }
   }
 
   void _scrollBotToBottom() {
@@ -629,7 +788,7 @@ class _ChatScreenState extends State<ChatScreen> {
         return _t(
           'Đã nhận được file thiết kế, cảm ơn bạn!',
           'Design file received, thank you!',
-          '已收到设计文件，谢谢！',
+          '已收到设计文件，谢谢。',
         );
       case '2':
         return _t(
@@ -708,7 +867,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       ],
                     ),
                   ),
-                  // N?t t?m ki?m
+                  // Nut tim kiem
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
@@ -727,13 +886,19 @@ class _ChatScreenState extends State<ChatScreen> {
             if (_selectedProject == null) ...[
               const SizedBox(height: 16),
               _buildMessageModeTabs(),
+              if (!_showChatbot) ...[
+                const SizedBox(height: 10),
+                _buildChatSourceTabs(),
+              ],
               const SizedBox(height: 16),
             ],
 
-            // N?i dung ch?nh
+            // Noi dung chinh
             Expanded(
               child: _selectedProject == null
-                  ? (_showChatbot ? _buildChatbot() : _buildProjectList())
+                  ? (_showChatbot
+                      ? _buildChatbot()
+                      : (_showFriendChats ? _buildFriendList() : _buildProjectList()))
                   : _buildChatDetail(),
             ),
           ],
@@ -828,6 +993,85 @@ class _ChatScreenState extends State<ChatScreen> {
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
                   color: selected ? Colors.white : theme.textColor,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChatSourceTabs() {
+    final theme = appThemeController;
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: theme.surfaceColor,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          _buildSourceTab(
+            icon: Icons.folder_rounded,
+            label: _t('Dự án', 'Projects', '项目'),
+            selected: !_showFriendChats,
+            onTap: () {
+              setState(() {
+                _showFriendChats = false;
+              });
+              _loadProjects();
+            },
+          ),
+          _buildSourceTab(
+            icon: Icons.people_alt_rounded,
+            label: _t('Bạn bè', 'Friends', '好友'),
+            selected: _showFriendChats,
+            onTap: () {
+              setState(() {
+                _showFriendChats = true;
+              });
+              _loadFriends();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSourceTab({
+    required IconData icon,
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    final theme = appThemeController;
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: selected ? theme.primaryColor.withValues(alpha: 0.12) : null,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 17,
+                color: selected ? theme.primaryColor : theme.mutedTextColor,
+              ),
+              const SizedBox(width: 7),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: selected ? theme.primaryColor : theme.mutedTextColor,
                 ),
               ),
             ],
@@ -946,7 +1190,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             child: Row(
               children: [
-                // Icon d? ?n
+                // Icon du an
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -956,7 +1200,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   child: Icon(project['icon'], color: color, size: 28),
                 ),
                 const SizedBox(width: 14),
-                // Th?ng tin
+                // Thong tin
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1056,6 +1300,138 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Widget _buildFriendList() {
+    final theme = appThemeController;
+    if (_isLoadingFriends) {
+      return Center(
+        child: CircularProgressIndicator(color: theme.primaryColor),
+      );
+    }
+
+    if (_friendError != null) {
+      return _buildStateMessage(
+        icon: Icons.error_outline_rounded,
+        title: _friendError!,
+        actionLabel: _t('Thử lại', 'Retry', '重试'),
+        onAction: () => _loadFriends(),
+      );
+    }
+
+    if (_friends.isEmpty) {
+      return _buildStateMessage(
+        icon: Icons.people_outline_rounded,
+        title: _t(
+          'Chưa có bạn bè để nhắn tin',
+          'No friends to message',
+          '暂无可聊天的好友',
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      itemCount: _friends.length,
+      itemBuilder: (context, index) {
+        final friend = _friends[index];
+        final color = parseHexColor(friend['color']);
+        final name = friend['name']?.toString() ?? '';
+        final initial = name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : '?';
+
+        return GestureDetector(
+          onTap: () {
+            setState(() {
+              _selectedProject = friend;
+            });
+            _loadMessages();
+            _scrollToBottom();
+          },
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: theme.surfaceColor,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withValues(alpha: 0.06),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Center(
+                    child: Text(
+                      initial,
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: theme.textColor,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        friend['lastMessage']?.toString() ??
+                            friend['email']?.toString() ??
+                            '',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: theme.mutedTextColor,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        friend['email']?.toString() ?? '',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: theme.mutedTextColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: Color(0xFF9CA3AF),
+                  size: 24,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildChatbot() {
     final theme = appThemeController;
     return Column(
@@ -1064,8 +1440,12 @@ class _ChatScreenState extends State<ChatScreen> {
           child: ListView.builder(
             controller: _botScrollController,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-            itemCount: _botMessages.length,
+            itemCount: _botMessages.length + (_isBotLoading ? 1 : 0),
             itemBuilder: (context, index) {
+              if (_isBotLoading && index == _botMessages.length) {
+                return _buildBotTypingIndicator();
+              }
+
               final message = _botMessages[index];
               final isMine = message['isMine'] == true;
 
@@ -1192,12 +1572,21 @@ class _ChatScreenState extends State<ChatScreen> {
                   borderRadius: BorderRadius.circular(24),
                 ),
                 child: IconButton(
-                  onPressed: _sendBotMessage,
-                  icon: const Icon(
-                    Icons.send_rounded,
-                    color: Colors.white,
-                    size: 20,
-                  ),
+                  onPressed: _isBotLoading ? null : _sendBotMessage,
+                  icon: _isBotLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(
+                          Icons.send_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
                 ),
               ),
             ],
@@ -1207,9 +1596,59 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Widget _buildBotTypingIndicator() {
+    final theme = appThemeController;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          const CircleAvatar(
+            radius: 17,
+            backgroundColor: Color(0xFFEDE9FE),
+            child: Icon(
+              Icons.smart_toy_rounded,
+              color: Color(0xFF6366F1),
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: theme.surfaceColor,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(6),
+                topRight: Radius.circular(16),
+                bottomLeft: Radius.circular(16),
+                bottomRight: Radius.circular(16),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withValues(alpha: 0.06),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: theme.primaryColor,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildChatDetail() {
     final theme = appThemeController;
     final project = _selectedProject!;
+    final isDirect = project['chatType'] == 'direct';
     final color = parseHexColor(project['color']);
     final memberCount = int.tryParse(
           project['memberCount']?.toString() ??
@@ -1271,11 +1710,14 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                     ),
                     Text(
-                      _t(
-                        '$memberCount thành viên',
-                        '$memberCount members',
-                        '$memberCount 名成员',
-                      ),
+                      isDirect
+                          ? (project['email']?.toString() ??
+                              _t('Bạn bè', 'Friend', '好友'))
+                          : _t(
+                              '$memberCount thành viên',
+                              '$memberCount members',
+                              '$memberCount 名成员',
+                            ),
                       style: const TextStyle(
                         fontSize: 12,
                         color: Color(0xFF10B981),
@@ -1284,7 +1726,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   ],
                 ),
               ),
-              // N?t th?ng tin d? ?n
+              // Nut thong tin du an
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
@@ -1301,7 +1743,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
 
-        // Danh s?ch tin nh?n
+        // Danh sach tin nhan
         Expanded(
           child: _isLoadingMessages
               ? Center(
@@ -1476,7 +1918,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           child: Row(
             children: [
-              // N?t ??nh k?m
+              // Nut dinh kem
               IconButton(
                 onPressed: _showAttachmentOptions,
                 icon: Icon(
@@ -1516,7 +1958,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                 ),
               ),
-              // N?t g?i
+              // Nut gui
               Container(
                 margin: const EdgeInsets.only(left: 8),
                 decoration: BoxDecoration(

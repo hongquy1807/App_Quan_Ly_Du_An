@@ -24,6 +24,7 @@ const pool = mysql.createPool({
 const JWT_SECRET = process.env.JWT_SECRET || 'quanlyduan-dev-secret';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 const DEFAULT_SYSTEM_ROLE_ID = Number(process.env.DEFAULT_SYSTEM_ROLE_ID || 2);
+const ADMIN_SYSTEM_ROLE_ID = Number(process.env.ADMIN_SYSTEM_ROLE_ID || 1);
 const RESET_TOKEN_TTL_MS = 15 * 60 * 1000;
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -79,6 +80,12 @@ function createAuthToken(user) {
         JWT_SECRET,
         { expiresIn: JWT_EXPIRES_IN }
     );
+}
+
+function isAdminUser(user) {
+    const roleName = String(user?.role_name || '').trim().toLowerCase();
+    return Number(user?.system_role_id) === ADMIN_SYSTEM_ROLE_ID ||
+        ['admin', 'administrator', 'quan tri vien', 'quản trị viên'].includes(roleName);
 }
 
 function isBcryptHash(value) {
@@ -236,6 +243,67 @@ router.post('/login', async (req, res) => {
         return res.status(500).json({
             success: false,
             message: 'Không thể đăng nhập.',
+            error: err.message
+        });
+    }
+});
+
+// POST /api/auth/admin-login
+// Dang nhap rieng cho web admin. Chi tai khoan co role Admin moi duoc vao.
+router.post('/admin-login', async (req, res) => {
+    try {
+        const email = normalizeEmail(req.body.email);
+        const password = String(req.body.password || '');
+
+        if (!email || !password) {
+            return res.status(400).json({
+                success: false,
+                message: 'Vui lòng nhập email và mật khẩu.'
+            });
+        }
+
+        const user = await findUserByEmail(email);
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: 'Email hoặc mật khẩu không đúng.'
+            });
+        }
+
+        const isPasswordValid = await verifyPassword(password, user.password);
+        if (!isPasswordValid) {
+            return res.status(401).json({
+                success: false,
+                message: 'Email hoặc mật khẩu không đúng.'
+            });
+        }
+
+        if (!isAdminUser(user)) {
+            return res.status(403).json({
+                success: false,
+                message: 'Tài khoản này không có quyền truy cập trang admin.'
+            });
+        }
+
+        await pool.query(
+            'UPDATE users SET last_login_at = NOW() WHERE id = ?',
+            [user.id]
+        );
+
+        user.last_login_at = new Date();
+        const token = createAuthToken(user);
+
+        return res.json({
+            success: true,
+            message: 'Đăng nhập admin thành công.',
+            token,
+            user: buildUserResponse(user)
+        });
+    } catch (err) {
+        console.error('Lỗi đăng nhập admin:', err);
+        return res.status(500).json({
+            success: false,
+            message: 'Không thể đăng nhập admin.',
             error: err.message
         });
     }

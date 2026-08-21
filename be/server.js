@@ -6,6 +6,7 @@ const cors = require('cors');
 
 const app = express();
 const uploadDir = path.join(__dirname, 'upload');
+const adminWebDir = path.join(__dirname, '..', 'web', 'admin');
 // ==========================================
 // 1. CẤU HÌNH CÁC MIDDLEWARE CƠ BẢN
 // ==========================================
@@ -16,6 +17,7 @@ app.use(express.json({ limit: '50mb' })); // Bắt buộc phải có để đọ
 // 2. CẤU HÌNH KẾT NỐI MYSQL
 // ==========================================
 app.use('/upload', express.static(uploadDir));
+app.use('/admin', express.static(adminWebDir));
 
 const dbConfig = {
     host: process.env.DB_HOST,
@@ -67,6 +69,9 @@ const tasksDetailRoutes = require('./routes/tasksDetailRoute');
 const timelineRoutes = require('./routes/timelineRoute');
 const projectChatRoutes = require('./routes/projectChatRoute');
 const feedbackRoutes = require('./routes/feedbackRoute');
+const chatbotRoutes = require('./routes/chatbotRoute');
+const friendRoutes = require('./routes/friendRoute');
+const cvRoutes = require('./routes/cvRoute');
 //
 app.use('/api/auth', authRoutes);
 app.use('/api/home', homeRoutes);
@@ -78,6 +83,9 @@ app.use('/api/projects', checkAuthAPI, projectRoutes);
 app.use('/api/timeline', checkAuthAPI, timelineRoutes);
 app.use('/api/project-chat', checkAuthAPI, projectChatRoutes);
 app.use('/api/feedback', checkAuthAPI, feedbackRoutes);
+app.use('/api/chatbot', checkAuthAPI, chatbotRoutes);
+app.use('/api/friends', checkAuthAPI, friendRoutes);
+app.use('/api/cv', checkAuthAPI, cvRoutes);
 
 app.use('/api', (req, res) => {
     return res.status(404).json({

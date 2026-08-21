@@ -173,7 +173,8 @@ async function getAccessibleProjects(userId) {
          LEFT JOIN project_members pm
                 ON pm.project_id = p.id AND pm.user_id = ?
          LEFT JOIN project_roles pr ON pr.id = pm.project_role_id
-         WHERE p.owner_id = ? OR pm.user_id = ?
+         WHERE (p.owner_id = ? OR pm.user_id = ?)
+           AND COALESCE(p.status, 'planning') <> 'completed'
          ORDER BY p.updated_at DESC, p.created_at DESC`,
         [userId, userId, userId]
     );
@@ -209,6 +210,7 @@ async function getTimelineTasks({
 
         const filters = [
             '(t.assignee_id = ? OR t.assignee_id IS NULL)',
+            "COALESCE(p.status, 'planning') <> 'completed'",
             "t.status <> 'done'",
             `${taskEndExpression} >= ?`,
             `${taskStartExpression} <= ?`

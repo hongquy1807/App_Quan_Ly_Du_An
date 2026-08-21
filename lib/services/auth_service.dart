@@ -70,9 +70,9 @@ class AuthService {
     if (kIsWeb) return 'http://localhost:3000/api';
     if (defaultTargetPlatform == TargetPlatform.android) {
       // IP nhà hongquy
-      return 'http://192.168.1.29:3000/api';
+      //return 'http://192.168.1.29:3000/api';
       // IP ở trường
-      //return 'http://192.168.0.195:3000/api';
+      return 'http://192.168.0.195:3000/api';
     }
     return 'http://localhost:3000/api';
   }

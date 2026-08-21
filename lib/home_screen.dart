@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'app_theme_controller.dart';
 import 'project_detail_screen.dart';
 import 'services/home_service.dart';
 import 'services/auth_service.dart';
+import 'services/profile_service.dart';
 import 'task_detail_screen.dart';
 import 'utils/color_utils.dart';
 import 'widgets/app_bottom_navigation.dart';
@@ -23,6 +26,7 @@ class _HomeScreenState extends State<HomeScreen> {
   HomeLanguage _language = HomeLanguage.vietnamese;
 
   final _homeService = HomeService();
+  final _profileService = ProfileService();
 
   // notifications state
   List<Map<String, dynamic>> notifications = [];
@@ -34,6 +38,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Map<String, dynamic>> _tasks = [];
   int unreadNotifications = 0;
   bool _loading = true;
+  Timer? _notificationPollTimer;
 
   List<Map<String, dynamic>> get tasks => _tasks;
 
@@ -42,6 +47,16 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _loadLanguage();
     _loadDashboard();
+    _notificationPollTimer = Timer.periodic(
+      const Duration(seconds: 15),
+      (_) => _refreshUnreadNotificationCount(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _notificationPollTimer?.cancel();
+    super.dispose();
   }
 
   String _t(String vi, String en, String zh) {
@@ -154,17 +169,33 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
-      final data = await _homeService.getDashboard();
+      final results = await Future.wait<Map<String, dynamic>>([
+        _homeService.getDashboard(),
+        _profileService.getProfile().catchError((_) => <String, dynamic>{}),
+      ]);
+      final data = results[0];
+      final profile = results[1];
 
       final user = data['user'] as Map<String, dynamic>?;
       final stats = data['stats'] as Map<String, dynamic>?;
-      final apiProjects = (data['projects'] as List<dynamic>?) ?? [];
+      final apiProjects = ((data['projects'] as List<dynamic>?) ?? [])
+          .where((project) {
+            if (project is! Map) return false;
+            final status = project['status']?.toString().toLowerCase() ?? '';
+            return status != 'completed';
+          })
+          .toList();
       final apiTasks = (data['tasks'] as List<dynamic>?) ?? [];
       final apiNotifications = (data['notifications'] as List<dynamic>?) ?? [];
 
       setState(() {
         userName = user?['name']?.toString() ?? '';
-        avatarUrl = '';
+        avatarUrl = _profileService.buildAvatarUrl(
+              profile['avatar']?.toString().isNotEmpty == true
+                  ? profile['avatar']?.toString()
+                  : user?['avatar']?.toString(),
+            ) ??
+            '';
         unreadNotifications = (() {
           final val = stats?['unreadNotifications'];
           if (val is int) return val;
@@ -178,6 +209,7 @@ class _HomeScreenState extends State<HomeScreen> {
             'id': map['id']?.toString() ?? '',
             'name': map['name'] ?? '',
             'description': map['description'] ?? '',
+            'status': map['status'] ?? '',
             'color': map['color'] ?? '#6366F1',
             'icon': Icons.folder_open_rounded,
             'members': map['members'] ?? 0,
@@ -250,6 +282,20 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       );
+    }
+  }
+
+  Future<void> _refreshUnreadNotificationCount() async {
+    try {
+      final data = await _homeService.getNotificationsUnreadCount();
+      final responseData = data['data'];
+      final nextCount = responseData is Map
+          ? _toInt(responseData['unread'] ?? responseData['count'])
+          : _toInt(data['unread'] ?? data['count']);
+      if (!mounted || nextCount == unreadNotifications) return;
+      setState(() => unreadNotifications = nextCount);
+    } catch (_) {
+      // Silent refresh: keep the current badge when the network is unavailable.
     }
   }
 
@@ -330,15 +376,27 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: CircleAvatar(
                       radius: 25,
                       backgroundColor: const Color(0xFFE5E7EB),
-                      child: Text(
-                        userName.isNotEmpty ? userName[0].toUpperCase() : 'U',
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF6366F1),
-                        ),
+                      backgroundImage:
+                          avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+                      child: avatarUrl.isEmpty
+                          ? Text(
+                              userName.isNotEmpty
+                                  ? userName[0].toUpperCase()
+                                  : 'U',
+                              style: const TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF6366F1),
+                              ),
+                            )
+                          : null,
+                      onBackgroundImageError: avatarUrl.isNotEmpty
+                          ? (_, __) {
+                              if (!mounted) return;
+                              setState(() => avatarUrl = '');
+                            }
+                          : null,
                       ),
-                    ),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
@@ -383,8 +441,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: IconButton(
                           icon: const Icon(Icons.notifications_none),
                           color: theme.textColor,
-                          onPressed: () {
-                            Navigator.pushNamed(context, '/notifications');
+                          onPressed: () async {
+                            await Navigator.pushNamed(context, '/notifications');
+                            if (!mounted) return;
+                            await _loadDashboard();
                           },
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),

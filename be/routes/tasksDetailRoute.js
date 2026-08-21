@@ -183,6 +183,8 @@ function mapAttachment(row) {
         task_id: row.task_id,
         uploader_id: row.uploader_id,
         uploader_name: row.uploader_name,
+        attachment_scope: row.attachment_scope || 'task',
+        scope: row.attachment_scope || 'task',
         file_name: row.file_name,
         name: row.file_name,
         file_url: row.file_url,
@@ -214,6 +216,31 @@ function mapComment(row, currentUserId) {
 async function tableExists(connection, tableName) {
     const [rows] = await connection.query('SHOW TABLES LIKE ?', [tableName]);
     return rows.length > 0;
+}
+
+async function columnExists(connection, tableName, columnName) {
+    const [rows] = await connection.query(
+        `SELECT COLUMN_NAME
+         FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = ?
+           AND COLUMN_NAME = ?
+         LIMIT 1`,
+        [tableName, columnName]
+    );
+    return rows.length > 0;
+}
+
+async function ensureTaskAttachmentScopeColumn(connection = pool) {
+    if (!(await tableExists(connection, 'task_attachments'))) return false;
+    if (await columnExists(connection, 'task_attachments', 'attachment_scope')) return true;
+    await connection.query(
+        `ALTER TABLE task_attachments
+         ADD COLUMN attachment_scope ENUM('task','submission')
+         COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'task'
+         AFTER file_size`
+    );
+    return true;
 }
 
 async function ensureTaskCommentsTable(connection = pool) {
@@ -286,10 +313,11 @@ async function getSubtasks(taskId, connection = pool) {
 
 async function getAttachments(taskId, connection = pool) {
     if (!(await tableExists(connection, 'task_attachments'))) return [];
+    await ensureTaskAttachmentScopeColumn(connection);
     const [rows] = await connection.query(
         `SELECT ta.id, ta.task_id, ta.uploader_id, uploader.name AS uploader_name,
                 ta.file_name, ta.file_url, ta.file_type, ta.mime_type,
-                ta.file_size, ta.created_at
+                ta.file_size, ta.attachment_scope, ta.created_at
          FROM task_attachments ta
          LEFT JOIN users uploader ON uploader.id = ta.uploader_id
          WHERE ta.task_id = ?
@@ -810,6 +838,7 @@ router.post('/:id/attachments', async (req, res) => {
         if (!(await tableExists(pool, 'task_attachments'))) {
             return res.status(501).json({ success: false, message: 'Database chưa có bảng task_attachments.' });
         }
+        await ensureTaskAttachmentScopeColumn(pool);
 
         if (fileBase64) {
             const savedFile = saveBase64File({ fileName, fileBase64 });
@@ -820,11 +849,13 @@ router.post('/:id/attachments', async (req, res) => {
         }
 
         const normalizedType = ['image', 'video', 'document'].includes(fileType) ? fileType : 'document';
+        const rawScope = String(req.body.attachment_scope || req.body.scope || 'submission').trim();
+        const attachmentScope = rawScope === 'task' ? 'task' : 'submission';
         const [result] = await pool.query(
             `INSERT INTO task_attachments
-                (task_id, uploader_id, file_name, file_url, file_type, mime_type, file_size)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [taskId, req.user.id, fileName, fileUrl, normalizedType, mimeType, fileSize]
+                (task_id, uploader_id, file_name, file_url, file_type, mime_type, file_size, attachment_scope)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [taskId, req.user.id, fileName, fileUrl, normalizedType, mimeType, fileSize, attachmentScope]
         );
 
         const attachments = await getAttachments(taskId);
@@ -902,10 +933,6 @@ router.post('/:id/comments', async (req, res) => {
             return res.status(404).json({ success: false, message: 'Không tìm thấy nhiệm vụ hoặc bạn không có quyền bình luận.' });
         }
 
-        if (!canWorkOnTask(task, req.user.id)) {
-            return taskWorkForbiddenResponse(res);
-        }
-
         await ensureTaskCommentsTable(pool);
 
         const [result] = await pool.query(
@@ -959,10 +986,6 @@ router.patch('/:id/comments/:commentId', async (req, res) => {
             return res.status(404).json({ success: false, message: 'Không tìm thấy nhiệm vụ hoặc bạn không có quyền xem.' });
         }
 
-        if (!canWorkOnTask(task, req.user.id)) {
-            return taskWorkForbiddenResponse(res);
-        }
-
         await ensureTaskCommentsTable(pool);
 
         const [result] = await pool.query(
@@ -1013,10 +1036,6 @@ router.delete('/:id/comments/:commentId', async (req, res) => {
         const task = await getAccessibleTask(taskId, req.user.id);
         if (!task) {
             return res.status(404).json({ success: false, message: 'Không tìm thấy nhiệm vụ hoặc bạn không có quyền xem.' });
-        }
-
-        if (!canWorkOnTask(task, req.user.id)) {
-            return taskWorkForbiddenResponse(res);
         }
 
         await ensureTaskCommentsTable(pool);

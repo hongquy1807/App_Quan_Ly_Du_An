@@ -157,6 +157,347 @@ function mapInvitation(row) {
     };
 }
 
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function escapeXml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
+}
+
+function formatDate(value) {
+    if (!value) return 'Chưa cập nhật';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
+}
+
+function formatDateTime(value) {
+    const date = value ? new Date(value) : new Date();
+    if (Number.isNaN(date.getTime())) return formatDate(new Date());
+    return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function taskStatusLabel(status) {
+    if (status === 'done') return 'Hoàn thành';
+    if (status === 'in_progress') return 'Đang làm';
+    if (status === 'review') return 'Chờ duyệt';
+    return 'Chưa nhận';
+}
+
+function buildCompletedProjectReport({ project, members, tasks }) {
+    const completedTasks = tasks.filter((task) => task.status === 'done').length;
+    const rows = tasks.map((task, index) => `
+        <tr>
+            <td>${index + 1}</td>
+            <td>
+                <strong>${escapeHtml(task.title)}</strong>
+                <div class="muted">${escapeHtml(task.description || 'Không có mô tả')}</div>
+            </td>
+            <td>${escapeHtml(task.assignee_name || 'Cả team')}</td>
+            <td>${escapeHtml(task.assignee_email || '')}</td>
+            <td>${formatDate(task.start_date)}</td>
+            <td>${formatDate(task.due_date)}</td>
+            <td><span class="badge">${escapeHtml(taskStatusLabel(task.status))}</span></td>
+        </tr>
+    `).join('');
+
+    const memberRows = members.map((member, index) => `
+        <tr>
+            <td>${index + 1}</td>
+            <td>${escapeHtml(member.name)}</td>
+            <td>${escapeHtml(member.email)}</td>
+            <td>${escapeHtml(member.role_name || 'Thành viên')}</td>
+        </tr>
+    `).join('');
+
+    return `<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <title>Báo cáo dự án - ${escapeHtml(project.name)}</title>
+  <style>
+    body { font-family: Arial, sans-serif; color: #1f2937; margin: 32px; line-height: 1.45; }
+    h1 { color: #4f46e5; margin-bottom: 4px; }
+    h2 { margin-top: 28px; color: #111827; }
+    .muted { color: #6b7280; font-size: 13px; margin-top: 4px; }
+    .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 22px 0; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 14px; background: #f9fafb; }
+    .value { font-size: 24px; font-weight: 700; color: #4f46e5; }
+    table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+    th, td { border: 1px solid #e5e7eb; padding: 10px; vertical-align: top; text-align: left; }
+    th { background: #eef2ff; color: #3730a3; }
+    .badge { display: inline-block; padding: 4px 8px; border-radius: 999px; background: #dcfce7; color: #047857; font-weight: 700; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Báo cáo chi tiết dự án</h1>
+  <div class="muted">Xuất ngày ${formatDate(new Date())}</div>
+
+  <h2>${escapeHtml(project.name)}</h2>
+  <p>${escapeHtml(project.description || 'Không có mô tả')}</p>
+
+  <div class="summary">
+    <div class="card"><div class="value">${members.length}</div><div>Thành viên</div></div>
+    <div class="card"><div class="value">${tasks.length}</div><div>Tổng task</div></div>
+    <div class="card"><div class="value">${completedTasks}</div><div>Task hoàn thành</div></div>
+    <div class="card"><div class="value">${formatDate(project.completed_at)}</div><div>Ngày hoàn thành</div></div>
+  </div>
+
+  <p><strong>Trưởng dự án:</strong> ${escapeHtml(project.owner_name || 'Chưa cập nhật')}</p>
+  <p><strong>Người đánh dấu hoàn thành:</strong> ${escapeHtml(project.completed_by_name || 'Chưa cập nhật')}</p>
+  <p><strong>Thời gian dự án:</strong> ${formatDate(project.start_date)} - ${formatDate(project.end_date)}</p>
+
+  <h2>Danh sách công việc</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>STT</th>
+        <th>Công việc</th>
+        <th>Người thực hiện</th>
+        <th>Email</th>
+        <th>Ngày bắt đầu</th>
+        <th>Hạn chót</th>
+        <th>Trạng thái</th>
+      </tr>
+    </thead>
+    <tbody>${rows || '<tr><td colspan="7">Không có công việc.</td></tr>'}</tbody>
+  </table>
+
+  <h2>Thành viên tham gia</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>STT</th>
+        <th>Họ tên</th>
+        <th>Email</th>
+        <th>Vai trò</th>
+      </tr>
+    </thead>
+    <tbody>${memberRows || '<tr><td colspan="4">Không có thành viên.</td></tr>'}</tbody>
+  </table>
+</body>
+</html>`;
+}
+
+function crc32(buffer) {
+    let crc = ~0;
+    for (let i = 0; i < buffer.length; i += 1) {
+        crc ^= buffer[i];
+        for (let j = 0; j < 8; j += 1) {
+            crc = (crc >>> 1) ^ (0xEDB88320 & -(crc & 1));
+        }
+    }
+    return (~crc) >>> 0;
+}
+
+function dosDateTime(date = new Date()) {
+    const time = (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2);
+    const dosDate = ((date.getFullYear() - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
+    return { time, date: dosDate };
+}
+
+function buildZip(files) {
+    const localParts = [];
+    const centralParts = [];
+    let offset = 0;
+    const stamp = dosDateTime();
+
+    files.forEach((file) => {
+        const nameBuffer = Buffer.from(file.name, 'utf8');
+        const data = Buffer.isBuffer(file.data) ? file.data : Buffer.from(file.data, 'utf8');
+        const crc = crc32(data);
+
+        const local = Buffer.alloc(30);
+        local.writeUInt32LE(0x04034b50, 0);
+        local.writeUInt16LE(20, 4);
+        local.writeUInt16LE(0x0800, 6);
+        local.writeUInt16LE(0, 8);
+        local.writeUInt16LE(stamp.time, 10);
+        local.writeUInt16LE(stamp.date, 12);
+        local.writeUInt32LE(crc, 14);
+        local.writeUInt32LE(data.length, 18);
+        local.writeUInt32LE(data.length, 22);
+        local.writeUInt16LE(nameBuffer.length, 26);
+        local.writeUInt16LE(0, 28);
+        localParts.push(local, nameBuffer, data);
+
+        const central = Buffer.alloc(46);
+        central.writeUInt32LE(0x02014b50, 0);
+        central.writeUInt16LE(20, 4);
+        central.writeUInt16LE(20, 6);
+        central.writeUInt16LE(0x0800, 8);
+        central.writeUInt16LE(0, 10);
+        central.writeUInt16LE(stamp.time, 12);
+        central.writeUInt16LE(stamp.date, 14);
+        central.writeUInt32LE(crc, 16);
+        central.writeUInt32LE(data.length, 20);
+        central.writeUInt32LE(data.length, 24);
+        central.writeUInt16LE(nameBuffer.length, 28);
+        central.writeUInt16LE(0, 30);
+        central.writeUInt16LE(0, 32);
+        central.writeUInt16LE(0, 34);
+        central.writeUInt16LE(0, 36);
+        central.writeUInt32LE(0, 38);
+        central.writeUInt32LE(offset, 42);
+        centralParts.push(central, nameBuffer);
+
+        offset += local.length + nameBuffer.length + data.length;
+    });
+
+    const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
+    const end = Buffer.alloc(22);
+    end.writeUInt32LE(0x06054b50, 0);
+    end.writeUInt16LE(0, 4);
+    end.writeUInt16LE(0, 6);
+    end.writeUInt16LE(files.length, 8);
+    end.writeUInt16LE(files.length, 10);
+    end.writeUInt32LE(centralSize, 12);
+    end.writeUInt32LE(offset, 16);
+    end.writeUInt16LE(0, 20);
+
+    return Buffer.concat([...localParts, ...centralParts, end]);
+}
+
+function wText(value) {
+    return `<w:t xml:space="preserve">${escapeXml(value)}</w:t>`;
+}
+
+function wRun(value, opts = {}) {
+    const color = opts.color ? `<w:color w:val="${opts.color}"/>` : '';
+    const bold = opts.bold ? '<w:b/><w:bCs/>' : '';
+    const size = opts.size ? `<w:sz w:val="${opts.size * 2}"/><w:szCs w:val="${opts.size * 2}"/>` : '';
+    return `<w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>${bold}${color}${size}</w:rPr>${wText(value)}</w:r>`;
+}
+
+function wParagraph(value, opts = {}) {
+    const align = opts.align ? `<w:jc w:val="${opts.align}"/>` : '';
+    const spacing = `<w:spacing w:before="${opts.before || 0}" w:after="${opts.after ?? 100}"/>`;
+    return `<w:p><w:pPr>${align}${spacing}</w:pPr>${wRun(value, opts)}</w:p>`;
+}
+
+function wHeading(value) {
+    return `<w:p><w:pPr><w:spacing w:before="220" w:after="120"/><w:pBdr><w:bottom w:val="single" w:sz="8" w:space="2" w:color="655CF6"/></w:pBdr></w:pPr>${wRun(value.toUpperCase(), { bold: true, size: 14, color: '655CF6' })}</w:p>`;
+}
+
+function wCell(content, opts = {}) {
+    const width = opts.width || 2400;
+    const fill = opts.fill ? `<w:shd w:val="clear" w:color="auto" w:fill="${opts.fill}"/>` : '';
+    const borders = opts.noBorder
+        ? '<w:tcBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/></w:tcBorders>'
+        : '<w:tcBorders><w:top w:val="single" w:sz="4" w:color="E5E7EB"/><w:left w:val="single" w:sz="4" w:color="E5E7EB"/><w:bottom w:val="single" w:sz="4" w:color="E5E7EB"/><w:right w:val="single" w:sz="4" w:color="E5E7EB"/></w:tcBorders>';
+    const margins = '<w:tcMar><w:top w:w="140" w:type="dxa"/><w:left w:w="160" w:type="dxa"/><w:bottom w:w="140" w:type="dxa"/><w:right w:w="160" w:type="dxa"/></w:tcMar>';
+    return `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/>${fill}${borders}${margins}</w:tcPr>${content || '<w:p/>'}</w:tc>`;
+}
+
+function wTable(rows, widths, opts = {}) {
+    const grid = widths.map((width) => `<w:gridCol w:w="${width}"/>`).join('');
+    const borders = opts.noBorder
+        ? '<w:tblBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/></w:tblBorders>'
+        : '<w:tblBorders><w:top w:val="single" w:sz="4" w:color="E5E7EB"/><w:left w:val="single" w:sz="4" w:color="E5E7EB"/><w:bottom w:val="single" w:sz="4" w:color="E5E7EB"/><w:right w:val="single" w:sz="4" w:color="E5E7EB"/><w:insideH w:val="single" w:sz="4" w:color="E5E7EB"/><w:insideV w:val="single" w:sz="4" w:color="E5E7EB"/></w:tblBorders>';
+    return `<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/>${borders}</w:tblPr><w:tblGrid>${grid}</w:tblGrid>${rows.join('')}</w:tbl>`;
+}
+
+function wHeaderCell(value, width) {
+    return wCell(wParagraph(value, { bold: true, color: '3730A3', size: 10, after: 0 }), { width, fill: 'EEF2FF' });
+}
+
+function wBodyCell(value, width, opts = {}) {
+    return wCell(wParagraph(value || opts.empty || 'Chưa cập nhật', { size: opts.size || 9.5, color: opts.color || '1F2937', after: 0 }), { width });
+}
+
+function buildTaskTable(tasks, emptyText) {
+    const widths = [600, 2600, 2500, 1300, 1300, 1100];
+    const rows = [
+        `<w:tr>${wHeaderCell('STT', widths[0])}${wHeaderCell('Nhiệm vụ', widths[1])}${wHeaderCell('Người thực hiện', widths[2])}${wHeaderCell('Bắt đầu', widths[3])}${wHeaderCell('Hạn chót', widths[4])}${wHeaderCell('Trạng thái', widths[5])}</w:tr>`
+    ];
+
+    if (tasks.length === 0) {
+        rows.push(`<w:tr>${wBodyCell('', widths[0], { empty: '' })}${wBodyCell(emptyText, widths[1])}${wBodyCell('', widths[2], { empty: '' })}${wBodyCell('', widths[3], { empty: '' })}${wBodyCell('', widths[4], { empty: '' })}${wBodyCell('', widths[5], { empty: '' })}</w:tr>`);
+        return wTable(rows, widths);
+    }
+
+    tasks.forEach((task, index) => {
+        const assignee = task.assignee_name
+            ? `${task.assignee_name}${task.assignee_email ? ` (${task.assignee_email})` : ''}`
+            : 'Cả team';
+        rows.push(`<w:tr>${wBodyCell(String(index + 1), widths[0])}${wBodyCell(`${task.title || ''}${task.description ? `\n${task.description}` : ''}`, widths[1])}${wBodyCell(assignee, widths[2])}${wBodyCell(formatDate(task.start_date), widths[3])}${wBodyCell(formatDate(task.due_date), widths[4])}${wBodyCell(taskStatusLabel(task.status), widths[5])}</w:tr>`);
+    });
+
+    return wTable(rows, widths);
+}
+
+function buildMemberTable(members) {
+    const widths = [650, 3100, 3500, 2150];
+    const rows = [
+        `<w:tr>${wHeaderCell('STT', widths[0])}${wHeaderCell('Họ tên', widths[1])}${wHeaderCell('Email', widths[2])}${wHeaderCell('Vai trò', widths[3])}</w:tr>`
+    ];
+
+    if (members.length === 0) {
+        rows.push(`<w:tr>${wBodyCell('', widths[0], { empty: '' })}${wBodyCell('Không có thành viên.', widths[1])}${wBodyCell('', widths[2], { empty: '' })}${wBodyCell('', widths[3], { empty: '' })}</w:tr>`);
+        return wTable(rows, widths);
+    }
+
+    members.forEach((member, index) => {
+        rows.push(`<w:tr>${wBodyCell(String(index + 1), widths[0])}${wBodyCell(member.name, widths[1])}${wBodyCell(member.email, widths[2])}${wBodyCell(member.role_name || 'Thành viên', widths[3])}</w:tr>`);
+    });
+
+    return wTable(rows, widths);
+}
+
+function buildProjectReportDocxBuffer({ project, members, tasks }) {
+    const completedTasks = tasks.filter((task) => task.status === 'done');
+    const incompleteTasks = tasks.filter((task) => task.status !== 'done');
+    const summaryRows = [
+        `<w:tr>${wCell(wParagraph('Thành viên', { bold: true, color: '655CF6', align: 'center', after: 40 }) + wParagraph(String(members.length), { bold: true, size: 20, align: 'center', after: 0 }), { width: 2350, fill: 'F5F3FF', noBorder: true })}${wCell(wParagraph('Tổng nhiệm vụ', { bold: true, color: '655CF6', align: 'center', after: 40 }) + wParagraph(String(tasks.length), { bold: true, size: 20, align: 'center', after: 0 }), { width: 2350, fill: 'F5F3FF', noBorder: true })}${wCell(wParagraph('Hoàn thành', { bold: true, color: '10B981', align: 'center', after: 40 }) + wParagraph(String(completedTasks.length), { bold: true, size: 20, align: 'center', after: 0 }), { width: 2350, fill: 'ECFDF5', noBorder: true })}${wCell(wParagraph('Chưa hoàn thành', { bold: true, color: 'EF4444', align: 'center', after: 40 }) + wParagraph(String(incompleteTasks.length), { bold: true, size: 20, align: 'center', after: 0 }), { width: 2350, fill: 'FEF2F2', noBorder: true })}</w:tr>`
+    ];
+
+    const body = [
+        wParagraph('Thông tin dự án', { bold: true, size: 15, color: '655CF6', after: 80 }),
+        wParagraph(`Tên dự án: ${project.name || 'Chưa cập nhật'}`, { bold: true, size: 11, color: '1F2937', after: 70 }),
+        wParagraph(`Mô tả: ${project.description || 'Không có mô tả'}`, { size: 10.5, color: '374151', after: 70 }),
+        wParagraph(`Thời gian dự án: ${formatDate(project.start_date)} - ${formatDate(project.end_date)}`, { size: 10.5, color: '374151', after: 120 }),
+        wTable(summaryRows, [2350, 2350, 2350, 2350], { noBorder: true }),
+        wHeading('Thành viên tham gia dự án'),
+        buildMemberTable(members),
+        wHeading('Tất cả nhiệm vụ của dự án'),
+        buildTaskTable(tasks, 'Không có nhiệm vụ trong dự án.'),
+        wHeading('Nhiệm vụ đã hoàn thành'),
+        buildTaskTable(completedTasks, 'Chưa có nhiệm vụ hoàn thành.'),
+        wHeading('Nhiệm vụ chưa hoàn thành'),
+        buildTaskTable(incompleteTasks, 'Không còn nhiệm vụ chưa hoàn thành.')
+    ].join('');
+
+    const cover = wTable([
+        `<w:tr>${wCell(body, { width: 9400, fill: 'FFFFFF', noBorder: true })}</w:tr>`
+    ], [9400], { noBorder: true });
+
+    const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:body>
+<w:tbl><w:tblPr><w:tblW w:w="9400" w:type="dxa"/><w:tblBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/></w:tblBorders></w:tblPr><w:tblGrid><w:gridCol w:w="9400"/></w:tblGrid><w:tr>${wCell(wParagraph('BÁO CÁO DỰ ÁN', { bold: true, size: 26, color: 'FFFFFF', align: 'center', after: 110 }) + wParagraph(project.name || 'Dự án', { bold: true, size: 18, color: 'FFFFFF', align: 'center', after: 90 }) + wParagraph(`Xuất lúc ${formatDateTime(new Date())}`, { size: 11, color: 'EDE9FE', align: 'center', after: 0 }), { width: 9400, fill: '655CF6', noBorder: true })}</w:tr></w:tbl>
+${cover}
+<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="720" w:right="900" w:bottom="720" w:left="900" w:header="360" w:footer="360" w:gutter="0"/></w:sectPr>
+</w:body></w:document>`;
+
+    return buildZip([
+        { name: '[Content_Types].xml', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>' },
+        { name: '_rels/.rels', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>' },
+        { name: 'word/document.xml', data: documentXml },
+        { name: 'word/_rels/document.xml.rels', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>' }
+    ]);
+}
+
 async function getProjectById(projectId, userId, connection = pool) {
     const [rows] = await connection.query(
         `SELECT p.id, p.name, p.description, p.owner_id, owner.name AS owner_name,
@@ -734,6 +1075,92 @@ router.patch('/invitations/:invitationId/decline', async (req, res) => {
         return res.status(500).json({ success: false, message: 'Không thể từ chối lời mời.', error: err.message });
     }
 });
+
+// GET /api/projects/:id/report
+// Xuất báo cáo Word cho dự án mà user đang tham gia.
+router.get('/:id/report', async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const projectId = Number(req.params.id);
+
+        if (!projectId) {
+            return res.status(400).json({
+                success: false,
+                message: 'ID dự án không hợp lệ.'
+            });
+        }
+
+        const [projectRows] = await pool.query(
+            `SELECT p.id, p.name, p.description, p.owner_id, owner.name AS owner_name,
+                    p.status, p.start_date, p.end_date,
+                    p.completed_at, p.completed_by, completed_user.name AS completed_by_name,
+                    p.created_at, p.updated_at
+             FROM projects p
+             INNER JOIN project_members current_member
+                     ON current_member.project_id = p.id AND current_member.user_id = ?
+             LEFT JOIN users owner ON owner.id = p.owner_id
+             LEFT JOIN users completed_user ON completed_user.id = p.completed_by
+             WHERE p.id = ?
+             LIMIT 1`,
+            [userId, projectId]
+        );
+
+        const project = projectRows[0];
+        if (!project) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy dự án hoặc bạn không có quyền xem.'
+            });
+        }
+
+        const [members] = await pool.query(
+            `SELECT u.id, u.name, u.email, pm.project_role_id, pr.name AS role_name, pm.joined_at
+             FROM project_members pm
+             INNER JOIN users u ON u.id = pm.user_id
+             LEFT JOIN project_roles pr ON pr.id = pm.project_role_id
+             WHERE pm.project_id = ?
+             ORDER BY
+                CASE pm.project_role_id WHEN 1 THEN 0 WHEN 2 THEN 1 ELSE 2 END,
+                u.name ASC`,
+            [projectId]
+        );
+
+        const [tasks] = await pool.query(
+            `SELECT t.id, t.title, t.description, t.assignee_id,
+                    assignee.name AS assignee_name, assignee.email AS assignee_email,
+                    t.start_date, t.due_date, t.status, t.created_at, t.updated_at
+             FROM tasks t
+             LEFT JOIN users assignee ON assignee.id = t.assignee_id
+             WHERE t.project_id = ?
+             ORDER BY
+                CASE WHEN t.status = 'done' THEN 1 ELSE 0 END,
+                CASE WHEN t.due_date IS NULL THEN 1 ELSE 0 END,
+                t.due_date ASC,
+                t.title ASC`,
+            [projectId]
+        );
+
+        const docx = buildProjectReportDocxBuffer({ project, members, tasks });
+        const safeName = String(project.name || 'du-an')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-zA-Z0-9_-]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .toLowerCase() || 'du-an';
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        res.setHeader('Content-Disposition', `attachment; filename="bao-cao-${safeName}.docx"`);
+        return res.send(docx);
+    } catch (err) {
+        console.error('Lỗi xuất báo cáo dự án:', err);
+        return res.status(500).json({
+            success: false,
+            message: 'Không thể xuất báo cáo dự án.',
+            error: err.message
+        });
+    }
+});
+
 router.get('/:id', async (req, res) => {
     try {
         const project = await getProjectById(req.params.id, req.user.id);

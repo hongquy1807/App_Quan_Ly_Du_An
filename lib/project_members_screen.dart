@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_theme_controller.dart';
+import 'services/friend_service.dart';
+import 'services/profile_service.dart';
 import 'services/project_service.dart';
 
 enum ProjectMembersLanguage { vietnamese, english, chinese }
@@ -19,12 +21,17 @@ class ProjectMembersScreen extends StatefulWidget {
 class _ProjectMembersScreenState extends State<ProjectMembersScreen> {
   final _searchController = TextEditingController();
   final _inviteEmailController = TextEditingController();
+  final FriendService _friendService = FriendService();
   final ProjectService _projectService = ProjectService();
+  final ProfileService _profileService = ProfileService();
   bool _isAscending = true;
   bool _showInviteInput = false;
   bool _isSendingInvite = false;
+  bool _isLoadingFriends = false;
+  String? _friendError;
   String _query = '';
   ProjectMembersLanguage _language = ProjectMembersLanguage.vietnamese;
+  List<Map<String, dynamic>> _friends = [];
 
   late final List<Map<String, dynamic>> _members =
       widget.members ?? _sampleMembers;
@@ -83,6 +90,35 @@ class _ProjectMembersScreenState extends State<ProjectMembersScreen> {
         orElse: () => ProjectMembersLanguage.vietnamese,
       );
     });
+  }
+
+  Future<void> _loadFriends() async {
+    setState(() {
+      _isLoadingFriends = true;
+      _friendError = null;
+    });
+
+    try {
+      final data = await _friendService.getFriends();
+      final friends = data['friends'];
+      if (!mounted) return;
+      setState(() {
+        _friends = friends is List
+            ? friends
+                .whereType<Map>()
+                .map((friend) => Map<String, dynamic>.from(friend))
+                .toList()
+            : [];
+        _isLoadingFriends = false;
+      });
+    } catch (err) {
+      if (!mounted) return;
+      setState(() {
+        _friends = [];
+        _friendError = err.toString();
+        _isLoadingFriends = false;
+      });
+    }
   }
 
   @override
@@ -306,7 +342,7 @@ class _ProjectMembersScreenState extends State<ProjectMembersScreen> {
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
                 itemCount: members.length,
                 itemBuilder: (context, index) {
-                  return _buildMemberCard(index + 1, members[index]);
+                  return _buildMemberCard(members[index]);
                 },
               ),
             ),
@@ -712,77 +748,347 @@ class _ProjectMembersScreenState extends State<ProjectMembersScreen> {
 
   Widget _buildInviteInput() {
     final theme = appThemeController;
-    return Row(
+    return Column(
       children: [
-        Expanded(
-          child: TextField(
-            controller: _inviteEmailController,
-            enabled: !_isSendingInvite,
-            keyboardType: TextInputType.emailAddress,
-            style: TextStyle(color: theme.textColor),
-            decoration: InputDecoration(
-              hintText: _t('Email thành viên', 'Member email', '成员邮箱'),
-              hintStyle: TextStyle(color: theme.mutedTextColor),
-              prefixIcon: Icon(
-                Icons.alternate_email_rounded,
-                color: theme.primaryColor,
-              ),
-              filled: true,
-              fillColor: theme.surfaceColor,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 16,
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(
-                  color: theme.mutedTextColor.withValues(alpha: 0.14),
-                ),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(
-                  color: theme.mutedTextColor.withValues(alpha: 0.14),
-                ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(color: theme.primaryColor, width: 1.4),
+        TextField(
+          controller: _inviteEmailController,
+          enabled: !_isSendingInvite,
+          keyboardType: TextInputType.emailAddress,
+          style: TextStyle(color: theme.textColor),
+          decoration: InputDecoration(
+            hintText: _t('Email thành viên', 'Member email', '成员邮箱'),
+            hintStyle: TextStyle(color: theme.mutedTextColor),
+            prefixIcon: Icon(
+              Icons.alternate_email_rounded,
+              color: theme.primaryColor,
+            ),
+            filled: true,
+            fillColor: theme.surfaceColor,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 16,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(
+                color: theme.mutedTextColor.withValues(alpha: 0.14),
               ),
             ),
-            onSubmitted: (_) => _sendInviteFromInput(),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(
+                color: theme.mutedTextColor.withValues(alpha: 0.14),
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(color: theme.primaryColor, width: 1.4),
+            ),
           ),
+          onSubmitted: (_) => _sendInviteFromInput(),
         ),
-        const SizedBox(width: 10),
-        SizedBox(
-          width: 54,
-          height: 54,
-          child: ElevatedButton(
-            onPressed: _isSendingInvite ? null : _sendInviteFromInput,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: theme.primaryColor,
-              foregroundColor: Colors.white,
-              disabledBackgroundColor:
-                  theme.primaryColor.withValues(alpha: 0.45),
-              elevation: 0,
-              padding: EdgeInsets.zero,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: 52,
+                child: OutlinedButton.icon(
+                  onPressed: _showFriendsPicker,
+                  icon: const Icon(Icons.people_alt_rounded),
+                  label: Text(
+                    _t('Danh sách bạn bè', 'Friends list', '好友列表'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: theme.primaryColor,
+                    side: BorderSide(
+                      color: theme.primaryColor.withValues(alpha: 0.38),
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
               ),
             ),
-            child: _isSendingInvite
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.2,
-                      color: Colors.white,
+            const SizedBox(width: 10),
+            Expanded(
+              child: SizedBox(
+                height: 52,
+                child: ElevatedButton.icon(
+                  onPressed: _isSendingInvite ? null : _sendInviteFromInput,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: theme.primaryColor,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor:
+                        theme.primaryColor.withValues(alpha: 0.45),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
                     ),
-                  )
-                : const Icon(Icons.send_rounded, size: 22),
-          ),
+                  ),
+                  icon: _isSendingInvite
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.send_rounded, size: 20),
+                  label: Text(
+                    _t('Gửi lời mời', 'Send invite', '发送邀请'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ],
+    );
+  }
+
+  Future<void> _showFriendsPicker() async {
+    if (_friends.isEmpty && !_isLoadingFriends) {
+      await _loadFriends();
+    }
+    if (!mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final theme = appThemeController;
+            final memberEmails = _members
+                .map((member) => member['email']?.toString().toLowerCase())
+                .whereType<String>()
+                .toSet();
+            final visibleFriends = _friends.where((friend) {
+              final email = friend['email']?.toString().toLowerCase();
+              return email != null &&
+                  email.isNotEmpty &&
+                  !memberEmails.contains(email);
+            }).toList();
+
+            return SafeArea(
+              child: Container(
+                margin: const EdgeInsets.all(12),
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+                decoration: BoxDecoration(
+                  color: theme.surfaceColor,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.16),
+                      blurRadius: 24,
+                      offset: const Offset(0, 12),
+                    ),
+                  ],
+                ),
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.68,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: theme.primaryColor.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Icon(
+                            Icons.people_alt_rounded,
+                            color: theme.primaryColor,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            _t('Danh sách bạn bè', 'Friends list', '好友列表'),
+                            style: TextStyle(
+                              color: theme.textColor,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(sheetContext),
+                          icon: Icon(Icons.close_rounded, color: theme.textColor),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    if (_isLoadingFriends)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 28),
+                        child: Center(
+                          child: CircularProgressIndicator(
+                            color: theme.primaryColor,
+                          ),
+                        ),
+                      )
+                    else if (_friendError != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.error_outline_rounded,
+                              color: const Color(0xFFEF4444),
+                              size: 42,
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              _friendError!,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: theme.mutedTextColor),
+                            ),
+                            const SizedBox(height: 12),
+                            ElevatedButton.icon(
+                              onPressed: () {
+                                _loadFriends().then((_) {
+                                  if (mounted) setSheetState(() {});
+                                });
+                              },
+                              icon: const Icon(Icons.refresh_rounded),
+                              label: Text(_t('Thử lại', 'Retry', '重试')),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: theme.primaryColor,
+                                foregroundColor: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else if (visibleFriends.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 30),
+                        child: Center(
+                          child: Text(
+                            _t(
+                              'Bạn chưa có bạn bè để mời',
+                              'No friends available to invite',
+                              '暂无可邀请的好友',
+                            ),
+                            style: TextStyle(color: theme.mutedTextColor),
+                          ),
+                        ),
+                      )
+                    else
+                      Flexible(
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          itemCount: visibleFriends.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 10),
+                          itemBuilder: (context, index) {
+                            final friend = visibleFriends[index];
+                            final name =
+                                friend['name']?.toString().trim().isNotEmpty ==
+                                        true
+                                    ? friend['name'].toString()
+                                    : _t('Bạn bè', 'Friend', '好友');
+                            final email = friend['email']?.toString() ?? '';
+                            final avatar = friend['avatar']?.toString();
+                            final initial = name.trim().isNotEmpty
+                                ? name.trim()[0].toUpperCase()
+                                : '?';
+
+                            return InkWell(
+                              borderRadius: BorderRadius.circular(16),
+                              onTap: () {
+                                _inviteEmailController.text = email;
+                                Navigator.pop(sheetContext);
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: theme.backgroundColor,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: theme.mutedTextColor
+                                        .withValues(alpha: 0.08),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 22,
+                                      backgroundColor: theme.primaryColor
+                                          .withValues(alpha: 0.14),
+                                      foregroundImage:
+                                          avatar != null && avatar.isNotEmpty
+                                              ? NetworkImage(avatar)
+                                              : null,
+                                      child: avatar == null || avatar.isEmpty
+                                          ? Text(
+                                              initial,
+                                              style: TextStyle(
+                                                color: theme.primaryColor,
+                                                fontWeight: FontWeight.w800,
+                                              ),
+                                            )
+                                          : null,
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            name,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              color: theme.textColor,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 3),
+                                          Text(
+                                            email,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              color: theme.mutedTextColor,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Icon(
+                                      Icons.add_circle_rounded,
+                                      color: theme.primaryColor,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -894,12 +1200,20 @@ class _ProjectMembersScreenState extends State<ProjectMembersScreen> {
     );
   }
 
-  Widget _buildMemberCard(int order, Map<String, dynamic> member) {
+  Widget _buildMemberCard(Map<String, dynamic> member) {
     final theme = appThemeController;
     final color = _roleColor(member['project_role_id'] ?? member['role']);
     final roleValue = member['project_role_id'] ?? member['role'];
     final canShowActions = _canManageMembers && !_isLeaderRole(roleValue);
     final isDeputy = _isDeputyRole(roleValue);
+    final memberName = member['name']?.toString() ?? '';
+    final memberEmail = member['email']?.toString() ?? '';
+    final avatarUrl = _profileService.buildAvatarUrl(member['avatar']?.toString());
+    final avatarLetter = memberName.isNotEmpty
+        ? memberName[0].toUpperCase()
+        : memberEmail.isNotEmpty
+            ? memberEmail[0].toUpperCase()
+            : '?';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -917,23 +1231,28 @@ class _ProjectMembersScreenState extends State<ProjectMembersScreen> {
       ),
       child: Row(
         children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Center(
-              child: Text(
-                order.toString(),
-                style: TextStyle(
-                  color: color,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                ),
-              ),
-            ),
+          CircleAvatar(
+            radius: 20,
+            backgroundColor: color.withValues(alpha: 0.14),
+            backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
+            onBackgroundImageError: avatarUrl != null
+                ? (_, __) {
+                    if (!mounted) return;
+                    setState(() {
+                      member['avatar'] = null;
+                    });
+                  }
+                : null,
+            child: avatarUrl == null
+                ? Text(
+                    avatarLetter,
+                    style: TextStyle(
+                      color: color,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
+                  )
+                : null,
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -941,7 +1260,7 @@ class _ProjectMembersScreenState extends State<ProjectMembersScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  member['name'],
+                  memberName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -952,7 +1271,7 @@ class _ProjectMembersScreenState extends State<ProjectMembersScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  member['email'],
+                  memberEmail,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 12, color: theme.mutedTextColor),

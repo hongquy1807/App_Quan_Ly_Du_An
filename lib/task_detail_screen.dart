@@ -158,14 +158,21 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                     .map((item) => _mapApiSubtask(Map<String, dynamic>.from(item)))
                 : const [],
           );
-        _attachments
+        final mappedAttachments = attachmentsData is List
+            ? attachmentsData
+                .whereType<Map>()
+                .map((item) => _mapApiAttachment(Map<String, dynamic>.from(item)))
+                .toList()
+            : <Map<String, dynamic>>[];
+        _taskAttachments
           ..clear()
           ..addAll(
-            attachmentsData is List
-                ? attachmentsData
-                    .whereType<Map>()
-                    .map((item) => _mapApiAttachment(Map<String, dynamic>.from(item)))
-                : const [],
+            mappedAttachments.where((item) => item['scope']?.toString() != 'submission'),
+          );
+        _submissionAttachments
+          ..clear()
+          ..addAll(
+            mappedAttachments.where((item) => item['scope']?.toString() == 'submission'),
           );
         _comments
           ..clear()
@@ -233,6 +240,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           'Tài liệu',
       'size': _formatFileSize(attachment['size'] ?? attachment['file_size']),
       'url': attachment['url'] ?? attachment['file_url'],
+      'scope': attachment['scope']?.toString() ??
+          attachment['attachment_scope']?.toString() ??
+          'task',
       'type': type,
       'icon': _attachmentIcon(type),
       'color': _attachmentColor(type),
@@ -247,13 +257,31 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     return apiBaseUrl;
   }
 
+  String _encodeFilePath(String path) {
+    return path
+        .replaceAll('\\', '/')
+        .split('/')
+        .map((part) {
+          if (part.isEmpty) return part;
+          try {
+            return Uri.encodeComponent(Uri.decodeComponent(part));
+          } catch (_) {
+            return Uri.encodeComponent(part);
+          }
+        })
+        .join('/');
+  }
+
   String _attachmentUrl(Map<String, dynamic> file) {
-    final rawUrl = file['url']?.toString().trim() ?? '';
+    final rawUrl = file['url']?.toString().trim().replaceAll('\\', '/') ?? '';
     if (rawUrl.isEmpty) return '';
     if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
-      return rawUrl;
+      final uri = Uri.tryParse(rawUrl);
+      if (uri == null) return rawUrl;
+      return uri.replace(path: _encodeFilePath(uri.path)).toString();
     }
-    final path = rawUrl.startsWith('/') ? rawUrl : '/$rawUrl';
+    final encodedPath = _encodeFilePath(rawUrl);
+    final path = encodedPath.startsWith('/') ? encodedPath : '/$encodedPath';
     return '${_fileBaseUrl()}$path';
   }
 
@@ -595,7 +623,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     return comment['content']?.toString() ?? '';
   }
 
-  final List<Map<String, dynamic>> _attachments = [];
+  final List<Map<String, dynamic>> _taskAttachments = [];
+  final List<Map<String, dynamic>> _submissionAttachments = [];
   final List<Map<String, dynamic>> _subtasks = [];
 
   @override
@@ -608,7 +637,6 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   }
 
   Future<void> _handleAddComment() async {
-    if (!_canUpdateWork) return;
     if (_commentController.text.trim().isEmpty) return;
 
     setState(() {
@@ -1586,13 +1614,13 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               ),
             ),
             Text(
-              '${_attachments.length} file',
+              '${_taskAttachments.length} file',
               style: TextStyle(fontSize: 13, color: theme.mutedTextColor),
             ),
           ],
         ),
         const SizedBox(height: 10),
-        ..._attachments.map((file) => _buildAttachmentItem(file)),
+        ..._taskAttachments.map((file) => _buildAttachmentItem(file)),
       ],
     );
   }
@@ -1629,8 +1657,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             ],
           ),
           if (_canUpdateWork) const SizedBox(height: 12),
-          if (_canUpdateWork)
-            Row(
+          Row(
             children: [
               Expanded(
                 child: _buildUploadTypeButton(
@@ -1655,7 +1682,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          if (_attachments.isEmpty)
+          if (_submissionAttachments.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: Text(
@@ -1668,7 +1695,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               ),
             )
           else
-            ..._attachments.map((file) => _buildAttachmentItem(file)),
+            ..._submissionAttachments.map((file) => _buildAttachmentItem(file)),
           if (_canUpdateWork) const SizedBox(height: 12),
           if (_canUpdateWork)
             SizedBox(
@@ -1785,7 +1812,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
       if (!mounted) return;
       setState(() {
-        _attachments.insert(0, _mapApiAttachment(attachment));
+        _submissionAttachments.insert(0, _mapApiAttachment(attachment));
         _isPickingAttachment = false;
       });
 
@@ -1898,6 +1925,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   Widget _buildAttachmentItem(Map<String, dynamic> file) {
     final theme = appThemeController;
     final canPreview = _isImageAttachment(file);
+    final canDeleteAttachment =
+        _canUpdateWork && file['scope']?.toString() == 'submission';
     return InkWell(
       borderRadius: BorderRadius.circular(10),
       onTap: canPreview
@@ -1986,7 +2015,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                     ],
                   ),
                 ),
-                if (_canUpdateWork)
+                if (canDeleteAttachment)
                   PopupMenuItem(
                     value: 'delete',
                     child: Row(
@@ -2169,6 +2198,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         'file_base64': fileBase64,
         'file_type': fileType,
         'file_size': fileSize,
+        'attachment_scope': 'submission',
       },
     );
     final responseData = data['data'];
@@ -2190,14 +2220,14 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
   Future<void> _deleteAttachment(String attachmentId) async {
     if (!_canUpdateWork) return;
-    final index = _attachments.indexWhere(
+    final index = _submissionAttachments.indexWhere(
       (attachment) => attachment['id']?.toString() == attachmentId,
     );
     if (index == -1) return;
-    final removedAttachment = Map<String, dynamic>.from(_attachments[index]);
+    final removedAttachment = Map<String, dynamic>.from(_submissionAttachments[index]);
 
     setState(() {
-      _attachments.removeAt(index);
+      _submissionAttachments.removeAt(index);
     });
 
     try {
@@ -2208,7 +2238,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     } catch (err) {
       if (!mounted) return;
       setState(() {
-        _attachments.insert(index, removedAttachment);
+        _submissionAttachments.insert(index, removedAttachment);
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -2334,7 +2364,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               ),
             ],
           ),
-          if (_canUpdateWork) const SizedBox(height: 16),
+          const SizedBox(height: 16),
 
           if (_comments.isEmpty)
             Padding(
@@ -2442,7 +2472,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                   ],
                 ),
               ),
-              if (comment['isMine'] && _canUpdateWork)
+              if (comment['isMine'])
                 PopupMenuButton<String>(
                   icon: Icon(
                     Icons.more_vert_rounded,
@@ -2606,7 +2636,6 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   }
 
   Future<void> _deleteComment(String commentId) async {
-    if (!_canUpdateWork) return;
     final index = _comments.indexWhere((comment) => comment['id'] == commentId);
     if (index == -1) return;
     final removedComment = Map<String, dynamic>.from(_comments[index]);
@@ -2690,7 +2719,6 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   }
 
   Future<void> _submitEditComment(String commentId) async {
-    if (!_canUpdateWork) return;
     final content = _editingCommentController.text.trim();
     if (content.isEmpty) return;
     await _updateComment(commentId: commentId, content: content);

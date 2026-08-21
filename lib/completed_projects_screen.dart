@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_theme_controller.dart';
+import 'completed_project_detail_screen.dart';
 import 'services/project_service.dart';
 import 'utils/color_utils.dart';
 
@@ -289,7 +290,18 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
       project['totalTasks'] ?? project['total_tasks'],
     );
 
-    return Container(
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => CompletedProjectDetailScreen(
+              project: Map<String, dynamic>.from(project),
+            ),
+          ),
+        );
+      },
+      child: Container(
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -370,6 +382,7 @@ class _CompletedProjectsScreenState extends State<CompletedProjectsScreen> {
             ),
           ),
         ],
+      ),
       ),
     );
   }

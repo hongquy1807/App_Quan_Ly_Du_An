@@ -2,6 +2,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_theme_controller.dart';
+import 'services/friend_service.dart';
 import 'services/project_service.dart';
 
 enum CreateProjectLanguage { vietnamese, english, chinese }
@@ -18,11 +19,15 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
   final _descriptionController = TextEditingController();
   final _memberEmailController = TextEditingController();
   final ProjectService _projectService = ProjectService();
+  final FriendService _friendService = FriendService();
   CreateProjectLanguage _language = CreateProjectLanguage.vietnamese;
   DateTime? _deadline;
   int _selectedColorIndex = 0;
   bool _isSubmitting = false;
+  bool _isLoadingFriends = false;
+  String? _friendError;
   final List<String> _memberEmails = [];
+  List<Map<String, dynamic>> _friends = [];
 
   final List<Color> _colors = const [
     Color(0xFF6366F1),
@@ -38,6 +43,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
   void initState() {
     super.initState();
     _loadLanguage();
+    _loadFriends();
   }
 
   String _t(String vi, String en, String zh) {
@@ -61,6 +67,35 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
         orElse: () => CreateProjectLanguage.vietnamese,
       );
     });
+  }
+
+  Future<void> _loadFriends() async {
+    setState(() {
+      _isLoadingFriends = true;
+      _friendError = null;
+    });
+
+    try {
+      final data = await _friendService.getFriends();
+      final friends = data['friends'];
+      if (!mounted) return;
+      setState(() {
+        _friends = friends is List
+            ? friends
+                .whereType<Map>()
+                .map((friend) => Map<String, dynamic>.from(friend))
+                .toList()
+            : [];
+        _isLoadingFriends = false;
+      });
+    } catch (err) {
+      if (!mounted) return;
+      setState(() {
+        _friends = [];
+        _friendError = err.toString();
+        _isLoadingFriends = false;
+      });
+    }
   }
 
   String _colorToHex(Color color) {
@@ -353,6 +388,25 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
               ),
             ],
           ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            height: 46,
+            child: OutlinedButton.icon(
+              onPressed: _showFriendPicker,
+              icon: const Icon(Icons.people_alt_rounded),
+              label: Text(_t('Mời bạn bè', 'Invite friends', '邀请好友')),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _colors[_selectedColorIndex],
+                side: BorderSide(
+                  color: _colors[_selectedColorIndex].withValues(alpha: 0.45),
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
           const SizedBox(height: 12),
           ..._memberEmails.asMap().entries.map((entry) {
             return Container(
@@ -484,6 +538,265 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
     });
   }
 
+  void _showFriendPicker() {
+    final theme = appThemeController;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
+            return Container(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.72,
+              ),
+              padding: EdgeInsets.fromLTRB(18, 18, 18, 18 + bottomPadding),
+              decoration: BoxDecoration(
+                color: theme.surfaceColor,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(24),
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: _colors[_selectedColorIndex]
+                              .withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Icon(
+                          Icons.people_alt_rounded,
+                          color: _colors[_selectedColorIndex],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _t('Mời bạn bè', 'Invite friends', '邀请好友'),
+                          style: TextStyle(
+                            color: theme.textColor,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: Icon(
+                          Icons.close_rounded,
+                          color: theme.mutedTextColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  if (_isLoadingFriends)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 48),
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          color: _colors[_selectedColorIndex],
+                        ),
+                      ),
+                    )
+                  else if (_friendError != null)
+                    _buildFriendPickerMessage(
+                      icon: Icons.error_outline_rounded,
+                      message: _friendError!,
+                      actionLabel: _t('Thử lại', 'Retry', '重试'),
+                      onAction: () {
+                        _loadFriends().then((_) {
+                          if (mounted) setSheetState(() {});
+                        });
+                      },
+                    )
+                  else if (_friends.isEmpty)
+                    _buildFriendPickerMessage(
+                      icon: Icons.people_outline_rounded,
+                      message: _t(
+                        'Bạn chưa có bạn bè để mời',
+                        'No friends to invite',
+                        '暂无可邀请好友',
+                      ),
+                    )
+                  else
+                    Flexible(
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        physics: const BouncingScrollPhysics(),
+                        itemCount: _friends.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final friend = _friends[index];
+                          final name = friend['name']?.toString() ?? '';
+                          final email = friend['email']?.toString() ?? '';
+                          final selected = _memberEmails.any(
+                            (item) => item.toLowerCase() == email.toLowerCase(),
+                          );
+                          return _buildFriendInviteTile(
+                            name: name,
+                            email: email,
+                            selected: selected,
+                            onTap: () {
+                              if (email.isEmpty) return;
+                              setState(() {
+                                if (selected) {
+                                  _memberEmails.removeWhere(
+                                    (item) =>
+                                        item.toLowerCase() ==
+                                        email.toLowerCase(),
+                                  );
+                                } else {
+                                  _memberEmails.add(email);
+                                }
+                              });
+                              setSheetState(() {});
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildFriendPickerMessage({
+    required IconData icon,
+    required String message,
+    String? actionLabel,
+    VoidCallback? onAction,
+  }) {
+    final theme = appThemeController;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 36),
+      child: Center(
+        child: Column(
+          children: [
+            Icon(
+              icon,
+              color: theme.mutedTextColor.withValues(alpha: 0.65),
+              size: 52,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: theme.textColor,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            if (actionLabel != null && onAction != null) ...[
+              const SizedBox(height: 12),
+              TextButton.icon(
+                onPressed: onAction,
+                icon: const Icon(Icons.refresh_rounded),
+                label: Text(actionLabel),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFriendInviteTile({
+    required String name,
+    required String email,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    final theme = appThemeController;
+    final initial = name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase();
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: theme.backgroundColor,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: selected
+                ? _colors[_selectedColorIndex]
+                : theme.mutedTextColor.withValues(alpha: 0.14),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: _colors[_selectedColorIndex].withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Center(
+                child: Text(
+                  initial,
+                  style: TextStyle(
+                    color: _colors[_selectedColorIndex],
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name.isEmpty ? email : name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: theme.textColor,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    email,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: theme.mutedTextColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              selected
+                  ? Icons.check_circle_rounded
+                  : Icons.add_circle_outline_rounded,
+              color:
+                  selected ? _colors[_selectedColorIndex] : theme.mutedTextColor,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _submitProject() async {
     final name = _nameController.text.trim();
     final description = _descriptionController.text.trim();
@@ -566,6 +879,13 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
   void _addMemberEmail() {
     final email = _memberEmailController.text.trim();
     if (email.isEmpty) return;
+    final exists = _memberEmails.any(
+      (item) => item.toLowerCase() == email.toLowerCase(),
+    );
+    if (exists) {
+      _memberEmailController.clear();
+      return;
+    }
     setState(() {
       _memberEmails.add(email);
       _memberEmailController.clear();

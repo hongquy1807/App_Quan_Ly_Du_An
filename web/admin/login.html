@@ -3,61 +3,128 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Đăng nhập Admin - QuanLyDuAn</title>
-    <link rel="stylesheet" href="./css/admin.css" />
+    <meta name="theme-color" content="#080b14" />
+    <meta name="description" content="Đăng nhập an toàn vào không gian quản trị QuanLyDuAn." />
+    <title>Đăng nhập | QuanLyDuAn</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./login.css" />
   </head>
   <body class="login-page">
+    <div class="ambient ambient-one" aria-hidden="true"></div>
+    <div class="ambient ambient-two" aria-hidden="true"></div>
+    <div class="noise" aria-hidden="true"></div>
+
     <main class="login-shell">
-      <section class="login-panel" aria-label="Đăng nhập quản trị">
-        <div class="login-brand">
-          <div class="brand-mark">Q</div>
-          <div>
-            <strong>QuanLyDuAn</strong>
-            <span>Admin Panel</span>
+      <section class="login-layout" aria-label="Đăng nhập quản trị">
+        <aside class="brand-panel">
+          <div class="brand-topline">
+            <a class="brand" href="./index.html" aria-label="QuanLyDuAn - Trang chủ">
+              <span class="brand-symbol" aria-hidden="true">
+                <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M16 3.5 27.25 10v12L16 28.5 4.75 22V10L16 3.5Z" stroke="currentColor" stroke-width="1.8" />
+                  <path d="m10.25 13.3 5.75 3.35 5.75-3.35M16 16.65v6.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </span>
+              <span class="brand-copy">
+                <strong>QuanLyDuAn</strong>
+                <span>Project intelligence platform</span>
+              </span>
+            </a>
+            <span class="version-chip"><span class="status-dot"></span> v2.0 / Secure</span>
           </div>
-        </div>
 
-        <div class="login-heading">
-          <p class="eyebrow">Quản trị hệ thống</p>
-          <h1>Đăng nhập Admin</h1>
-          <p>Chỉ tài khoản có quyền Admin mới được truy cập bảng điều khiển.</p>
-        </div>
+          <div class="brand-message">
+            <p class="eyebrow"><span></span> Không gian vận hành thế hệ mới</p>
+            <h1>Biến dữ liệu<br /><em>thành tiến độ.</em></h1>
+            <p class="brand-description">Một trung tâm điều hành tinh gọn để đội ngũ kết nối, kiểm soát và đưa mọi dự án về đích.</p>
+          </div>
 
-        <form class="login-form" id="adminLoginForm">
-          <label>
-            Email
-            <input
-              id="adminEmail"
-              type="email"
-              autocomplete="email"
-              placeholder="admin@example.com"
-              required
-            />
-          </label>
+          <div class="orbit-visual" aria-hidden="true">
+            <div class="orbit orbit-large"></div>
+            <div class="orbit orbit-small"></div>
+            <div class="orbit-core"><span></span></div>
+            <div class="orbit-node node-a"></div>
+            <div class="orbit-node node-b"></div>
+            <div class="orbit-node node-c"></div>
+            <div class="orbit-label label-a">LIVE DATA</div>
+            <div class="orbit-label label-b">SYNC 100%</div>
+          </div>
 
-          <label>
-            Mật khẩu
-            <div class="password-field">
-              <input
-                id="adminPassword"
-                type="password"
-                autocomplete="current-password"
-                placeholder="Nhập mật khẩu"
-                required
-              />
-              <button id="togglePasswordBtn" type="button">Hiện</button>
+          <div class="brand-footer">
+            <span>Hệ thống đang hoạt động ổn định</span>
+            <span class="footer-line"></span>
+            <span>© 2025 QuanLyDuAn</span>
+          </div>
+        </aside>
+
+        <section class="login-panel">
+          <div class="mobile-brand">
+            <a class="brand" href="./index.html" aria-label="QuanLyDuAn - Trang chủ">
+              <span class="brand-symbol" aria-hidden="true">
+                <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M16 3.5 27.25 10v12L16 28.5 4.75 22V10L16 3.5Z" stroke="currentColor" stroke-width="1.8" />
+                  <path d="m10.25 13.3 5.75 3.35 5.75-3.35M16 16.65v6.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </span>
+              <span class="brand-copy">
+                <strong>QuanLyDuAn</strong>
+                <span>Project intelligence platform</span>
+              </span>
+            </a>
+          </div>
+
+          <div class="login-heading">
+            <div class="login-kicker"><span class="lock-icon" aria-hidden="true">⌁</span> Khu vực quản trị</div>
+            <h2>Chào mừng<br /><span>quay trở lại.</span></h2>
+            <p>Đăng nhập để tiếp tục điều hành không gian dự án của bạn.</p>
+          </div>
+
+          <form class="login-form" id="adminLoginForm" novalidate>
+            <div class="field-group">
+              <label for="adminEmail">Địa chỉ email</label>
+              <div class="input-wrap">
+                <span class="input-icon" aria-hidden="true">
+                  <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="4" width="15" height="12" rx="2.5" stroke="currentColor" stroke-width="1.5"/><path d="m3.5 6 6.5 4.5L16.5 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </span>
+                <input id="adminEmail" type="email" autocomplete="email" placeholder="ten@congty.com" required />
+              </div>
             </div>
-          </label>
 
-          <p class="login-error" id="loginError" role="alert"></p>
+            <div class="field-group">
+              <div class="field-label-row">
+                <label for="adminPassword">Mật khẩu</label>
+                <a class="quiet-link" href="#" onclick="return false;">Quên mật khẩu?</a>
+              </div>
+              <div class="input-wrap password-field">
+                <span class="input-icon" aria-hidden="true">
+                  <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3.25" y="8.25" width="13.5" height="9" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M6 8V6.5a4 4 0 0 1 8 0V8M10 12v1.75" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                </span>
+                <input id="adminPassword" type="password" autocomplete="current-password" placeholder="Nhập mật khẩu của bạn" required />
+                <button id="togglePasswordBtn" class="password-toggle" type="button" aria-label="Hiện mật khẩu" aria-pressed="false">Hiện</button>
+              </div>
+            </div>
 
-          <button class="primary-btn login-submit" id="loginSubmitBtn" type="submit">
-            Đăng nhập
-          </button>
-        </form>
+            <p class="login-error" id="loginError" role="alert" aria-live="polite"></p>
+
+            <button class="primary-btn login-submit" id="loginSubmitBtn" type="submit">
+              <span class="button-label">Truy cập hệ thống</span>
+              <span class="button-arrow" aria-hidden="true">↗</span>
+              <span class="button-loader" aria-hidden="true"></span>
+            </button>
+          </form>
+
+          <div class="login-security">
+            <span class="shield-icon" aria-hidden="true">
+              <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 2.25 16 4.5v4.65c0 3.55-2.4 6.75-6 8.1-3.6-1.35-6-4.55-6-8.1V4.5l6-2.25Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="m7.25 10 1.75 1.75 3.75-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <span>Kết nối được mã hóa đầu cuối<br /><strong>Phiên đăng nhập an toàn</strong></span>
+          </div>
+        </section>
       </section>
     </main>
 
-    <script src="./js/login.js"></script>
+    <script src="./login.js"></script>
   </body>
 </html>

@@ -152,6 +152,11 @@
         });
 
         document.getElementById("pageTitle").textContent = pageTitles[section];
+        const breadcrumb = document.getElementById("breadcrumbCurrent");
+        if (breadcrumb) {
+          breadcrumb.textContent = section === "overview" ? "Overview" : pageTitles[section].replace("Quản lý ", "");
+        }
+        closeMobileSidebar();
       }
 
       function filteredUsers() {
@@ -464,6 +469,16 @@
         renderFeedbacks();
       }
 
+      function closeMobileSidebar() {
+        document.body.classList.remove("sidebar-open");
+        document.getElementById("mobileMenuBtn")?.setAttribute("aria-expanded", "false");
+      }
+
+      function toggleMobileSidebar() {
+        const isOpen = document.body.classList.toggle("sidebar-open");
+        document.getElementById("mobileMenuBtn")?.setAttribute("aria-expanded", String(isOpen));
+      }
+
       // ===== EVENT LISTENERS =====
       // Navigation
       document.querySelectorAll("[data-section]").forEach((el) => {
@@ -560,6 +575,18 @@
 
       // Logout
       document.querySelector(".logout-btn").addEventListener("click", logoutAdmin);
+
+      // Responsive navigation
+      document.getElementById("mobileMenuBtn")?.addEventListener("click", toggleMobileSidebar);
+      document.getElementById("sidebarOverlay")?.addEventListener("click", closeMobileSidebar);
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          closeMobileSidebar();
+          closeUserModal();
+          closeProjectModal();
+          closeFeedbackModal();
+        }
+      });
 
       // ===== INIT =====
       renderAdminIdentity();

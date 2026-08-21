@@ -1,11 +1,11 @@
 {
-    "name": "quanlyduan",
-    "short_name": "quanlyduan",
+    "name": "QuanLyDuAn — Project Intelligence Platform",
+    "short_name": "QuanLyDuAn",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#080b14",
+    "theme_color": "#080b14",
+    "description": "Không gian điều hành và quản lý dự án thế hệ mới.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

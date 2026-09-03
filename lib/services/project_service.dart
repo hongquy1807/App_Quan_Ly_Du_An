@@ -370,6 +370,7 @@ class ProjectService {
     DateTime? dueDate,
     String? status,
     String? assigneeId,
+    List<int>? assigneeIds,
   }) async {
     final data = await _request(
       method: 'PATCH',
@@ -379,6 +380,7 @@ class ProjectService {
         if (description != null) 'description': description,
         if (dueDate != null) 'due_date': _formatApiDate(dueDate),
         if (status != null) 'status': status,
+        if (assigneeIds != null) 'assignee_ids': assigneeIds,
         if (assigneeId != null) 'assignee_id': assigneeId,
       },
     );

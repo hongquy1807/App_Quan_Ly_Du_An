@@ -25,24 +25,19 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   Future<void> _handleForgotPassword() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
       final result = await _authService.forgotPassword(
         email: _emailController.text.trim(),
       );
-      final resetToken = result['reset_token']?.toString() ?? '';
 
       if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-      });
+      setState(() => _isLoading = false);
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Đã tạo mã đặt lại mật khẩu.'),
+          content: Text('Đã gửi mã OTP đến email của bạn.'),
           backgroundColor: Color(0xFF10B981),
           duration: Duration(seconds: 2),
         ),
@@ -50,17 +45,14 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
       Navigator.pushNamed(
         context,
-        '/reset-password',
+        '/reset-otp',
         arguments: {
-          'email': _emailController.text.trim(),
-          'reset_token': resetToken,
+          'email': result['email']?.toString() ?? _emailController.text.trim(),
         },
       );
     } on ApiException catch (err) {
       if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-      });
+      setState(() => _isLoading = false);
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -74,6 +66,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
+    const textColor = Color(0xFF111827);
+    const mutedColor = Color(0xFF4B5563);
+    const primaryColor = Color(0xFF6366F1);
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
@@ -97,7 +93,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     child: const Icon(
                       Icons.arrow_back_ios_new_rounded,
                       size: 20,
-                      color: Color(0xFF1F2937),
+                      color: textColor,
                     ),
                   ),
                 ),
@@ -112,14 +108,12 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                           gradient: const LinearGradient(
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
-                            colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                            colors: [primaryColor, Color(0xFF8B5CF6)],
                           ),
                           borderRadius: BorderRadius.circular(30),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(
-                                0xFF6366F1,
-                              ).withValues(alpha: 0.3),
+                              color: primaryColor.withValues(alpha: 0.28),
                               spreadRadius: 2,
                               blurRadius: 20,
                               offset: const Offset(0, 8),
@@ -136,19 +130,20 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                       const Text(
                         'Quên mật khẩu?',
                         style: TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1F2937),
+                          fontSize: 28,
+                          fontWeight: FontWeight.w800,
+                          color: textColor,
                         ),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 10),
                       const Text(
-                        'Nhập email của bạn để tạo mã đặt lại mật khẩu.',
+                        'Nhập email để nhận mã OTP khôi phục mật khẩu.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          fontSize: 14,
-                          color: Color(0xFF6B7280),
+                          fontSize: 15,
+                          color: mutedColor,
                           height: 1.5,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ],
@@ -158,9 +153,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 const Text(
                   'Email',
                   style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF374151),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: textColor,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -168,11 +163,39 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
                   textInputAction: TextInputAction.done,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    color: textColor,
+                    fontWeight: FontWeight.w600,
+                  ),
                   decoration: InputDecoration(
                     hintText: 'nhap@email.com',
-                    prefixIcon: const Icon(Icons.email_outlined),
+                    hintStyle: const TextStyle(
+                      color: Color(0xFF9CA3AF),
+                      fontWeight: FontWeight.w500,
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.email_outlined,
+                      color: Color(0xFF6B7280),
+                    ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(
+                        color: Color(0xFFD1D5DB),
+                        width: 1.5,
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(
+                        color: Color(0xFFD1D5DB),
+                        width: 1.5,
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide:
+                          const BorderSide(color: primaryColor, width: 2),
                     ),
                     filled: true,
                     fillColor: const Color(0xFFF9FAFB),
@@ -182,12 +205,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     ),
                   ),
                   validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
+                    final email = value?.trim() ?? '';
+                    if (email.isEmpty) {
                       return 'Vui lòng nhập email';
                     }
                     if (!RegExp(
                       r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
-                    ).hasMatch(value.trim())) {
+                    ).hasMatch(email)) {
                       return 'Email không hợp lệ';
                     }
                     return null;
@@ -200,7 +224,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   child: ElevatedButton(
                     onPressed: _isLoading ? null : _handleForgotPassword,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF6366F1),
+                      backgroundColor: primaryColor,
                       foregroundColor: Colors.white,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
@@ -222,7 +246,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                                 ),
                               ),
                               SizedBox(width: 12),
-                              Text('Đang gửi...'),
+                              Text(
+                                'Đang gửi...',
+                                style: TextStyle(fontWeight: FontWeight.w700),
+                              ),
                             ],
                           )
                         : const Row(
@@ -231,10 +258,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                               Icon(Icons.send_rounded, size: 20),
                               SizedBox(width: 8),
                               Text(
-                                'Gửi mã đặt lại mật khẩu',
+                                'Gửi mã OTP',
                                 style: TextStyle(
                                   fontSize: 16,
-                                  fontWeight: FontWeight.w600,
+                                  fontWeight: FontWeight.w700,
                                 ),
                               ),
                             ],
@@ -250,7 +277,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                         'Đã nhớ mật khẩu? ',
                         style: TextStyle(
                           fontSize: 14,
-                          color: Color(0xFF6B7280),
+                          color: mutedColor,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                       GestureDetector(
@@ -259,8 +287,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                           'Đăng nhập',
                           style: TextStyle(
                             fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF6366F1),
+                            fontWeight: FontWeight.w800,
+                            color: primaryColor,
                           ),
                         ),
                       ),
@@ -271,27 +299,28 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFEF3C7),
+                    color: const Color(0xFFFFF7CC),
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                      color: const Color(0xFFF59E0B).withValues(alpha: 0.2),
+                      color: const Color(0xFFF59E0B).withValues(alpha: 0.24),
                     ),
                   ),
                   child: const Row(
                     children: [
                       Icon(
                         Icons.security_rounded,
-                        color: Color(0xFFF59E0B),
+                        color: Color(0xFFD97706),
                         size: 20,
                       ),
                       SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          'Mẹo: Sử dụng mật khẩu mạnh với ít nhất 8 ký tự, bao gồm chữ hoa, chữ thường, số và ký tự đặc biệt.',
+                          'Mã OTP chỉ có hiệu lực trong 15 phút. Không chia sẻ mã này cho người khác.',
                           style: TextStyle(
-                            fontSize: 12,
-                            color: Color(0xFF92400E),
+                            fontSize: 13,
+                            color: Color(0xFF78350F),
                             height: 1.4,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),

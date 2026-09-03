@@ -1,18 +1,30 @@
+﻿import 'dart:convert';
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_theme_controller.dart';
+import 'services/auth_service.dart';
 import 'services/project_service.dart';
 
 enum CreateTaskLanguage { vietnamese, english, chinese }
 
 class CreateTaskScreen extends StatefulWidget {
-  const CreateTaskScreen({super.key, this.project, this.members});
+  const CreateTaskScreen({
+    super.key,
+    this.project,
+    this.members,
+    this.initialTask,
+    this.isEditing = false,
+  });
 
   final Map<String, dynamic>? project;
   final List<Map<String, dynamic>>? members;
+  final Map<String, dynamic>? initialTask;
+  final bool isEditing;
 
   @override
   State<CreateTaskScreen> createState() => _CreateTaskScreenState();
@@ -40,10 +52,56 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
   void initState() {
     super.initState();
     _members = List<Map<String, dynamic>>.from(widget.members ?? const []);
+    _fillInitialTask();
     _loadLanguage();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _loadTaskOptions();
     });
+  }
+
+  void _fillInitialTask() {
+    final task = widget.initialTask;
+    if (task == null) return;
+
+    _titleController.text = task['title']?.toString() ?? '';
+    _descriptionController.text = task['description']?.toString() ?? '';
+    _startDate = _parseDate(
+      task['startDate'] ?? task['start_date'] ?? task['createdAt'],
+    );
+    _endDate = _parseDate(task['dueDate'] ?? task['due_date']);
+
+    final assigneeIds = task['assignee_ids'];
+    if (assigneeIds is List) {
+      _selectedMemberIds.addAll(
+        assigneeIds
+            .map((value) => int.tryParse(value.toString()))
+            .whereType<int>(),
+      );
+      return;
+    }
+
+    final assigneeId = int.tryParse(
+      (task['assigneeId'] ?? task['assignee_id'] ?? '').toString(),
+    );
+    if (assigneeId != null) _selectedMemberIds.add(assigneeId);
+  }
+
+  DateTime? _parseDate(dynamic value) {
+    if (value is DateTime) return value;
+    final text = value?.toString();
+    if (text == null || text.isEmpty || text == 'null') return null;
+    if (text.contains('/')) {
+      final parts = text.split('/');
+      if (parts.length == 3) {
+        final day = int.tryParse(parts[0]);
+        final month = int.tryParse(parts[1]);
+        final year = int.tryParse(parts[2]);
+        if (day != null && month != null && year != null) {
+          return DateTime(year, month, day);
+        }
+      }
+    }
+    return DateTime.tryParse(text);
   }
 
   @override
@@ -127,11 +185,11 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildTextField(
-                      label: _t('Tên nhiệm vụ', 'Task name', '任务名称'),
+                      label: _t('TĂªn nhiá»‡m vá»¥', 'Task name', 'ä»»å¡åç§°'),
                       hintText: _t(
-                        'Nhập tên nhiệm vụ',
+                        'Nháº­p tĂªn nhiá»‡m vá»¥',
                         'Enter task name',
-                        '请输入任务名称',
+                        'è¯·è¾“å…¥ä»»å¡åç§°',
                       ),
                       controller: _titleController,
                       icon: Icons.task_alt_rounded,
@@ -141,7 +199,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                       children: [
                         Expanded(
                           child: _buildDatePicker(
-                            label: _t('Ngày bắt đầu', 'Start date', '开始日期'),
+                            label: _t('NgĂ y báº¯t Ä‘áº§u', 'Start date', 'å¼€å§‹æ—¥æœŸ'),
                             date: _startDate,
                             onTap: () => _pickDate(isStartDate: true),
                           ),
@@ -149,7 +207,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: _buildDatePicker(
-                            label: _t('Ngày kết thúc', 'End date', '结束日期'),
+                            label: _t('NgĂ y káº¿t thĂºc', 'End date', 'ç»“æŸæ—¥æœŸ'),
                             date: _endDate,
                             onTap: () => _pickDate(isStartDate: false),
                           ),
@@ -160,11 +218,11 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                     _buildMemberPicker(),
                     const SizedBox(height: 16),
                     _buildTextField(
-                      label: _t('Mô tả nhiệm vụ', 'Task description', '任务描述'),
+                      label: _t('MĂ´ táº£ nhiá»‡m vá»¥', 'Task description', 'ä»»å¡æè¿°'),
                       hintText: _t(
-                        'Nhập mô tả cho nhiệm vụ',
+                        'Nháº­p mĂ´ táº£ cho nhiá»‡m vá»¥',
                         'Enter task description',
-                        '请输入任务描述',
+                        'è¯·è¾“å…¥ä»»å¡æè¿°',
                       ),
                       controller: _descriptionController,
                       icon: Icons.notes_rounded,
@@ -189,11 +247,19 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                                   color: Colors.white,
                                 ),
                               )
-                            : const Icon(Icons.add_task_rounded),
+                            : Icon(
+                                widget.isEditing
+                                    ? Icons.save_rounded
+                                    : Icons.add_task_rounded,
+                              ),
                         label: Text(
                           _isSaving
-                              ? _t('Đang tạo...', 'Creating...', '正在创建...')
-                              : _t('Tạo nhiệm vụ', 'Create task', '创建任务'),
+                              ? widget.isEditing
+                                  ? _t('\u0110ang l\u01b0u...', 'Saving...', '\u6b63\u5728\u4fdd\u5b58...')
+                                  : _t('Äang táº¡o...', 'Creating...', 'æ­£åœ¨åˆ›å»º...')
+                              : widget.isEditing
+                                  ? _t('L\u01b0u thay \u0111\u1ed5i', 'Save changes', '\u4fdd\u5b58\u66f4\u6539')
+                                  : _t('Táº¡o nhiá»‡m vá»¥', 'Create task', 'åˆ›å»ºä»»å¡'),
                         ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: theme.primaryColor,
@@ -242,7 +308,9 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
           ),
           Expanded(
             child: Text(
-              _t('Tạo nhiệm vụ', 'Create task', '创建任务'),
+              widget.isEditing
+                  ? _t('S\u1eeda nhi\u1ec7m v\u1ee5', 'Edit task', '\u7f16\u8f91\u4efb\u52a1')
+                  : _t('Táº¡o nhiá»‡m vá»¥', 'Create task', 'åˆ›å»ºä»»å¡'),
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 22,
@@ -299,7 +367,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
             const SizedBox(height: 10),
             Text(
               date == null
-                  ? _t('Chọn ngày', 'Choose date', '选择日期')
+                  ? _t('Chá»n ngĂ y', 'Choose date', 'é€‰æ‹©æ—¥æœŸ')
                   : _formatDate(date),
               style: TextStyle(
                 fontSize: 14,
@@ -320,7 +388,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildSectionLabel(
-            _t('Người nhận nhiệm vụ', 'Task assignees', '任务负责人'),
+            _t('NgÆ°á»i nháº­n nhiá»‡m vá»¥', 'Task assignees', 'ä»»å¡è´Ÿè´£äºº'),
             Icons.group_rounded,
           ),
           const SizedBox(height: 12),
@@ -334,9 +402,9 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                     ? Center(
                         child: Text(
                           _t(
-                            'Chưa có thành viên trong dự án',
+                            'ChÆ°a cĂ³ thĂ nh viĂªn trong dá»± Ă¡n',
                             'No members in this project yet',
-                            '项目暂无成员',
+                            'é¡¹ç›®æ‚æ— æˆå‘˜',
                           ),
                           style: TextStyle(color: theme.mutedTextColor),
                         ),
@@ -437,7 +505,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildSectionLabel(
-            _t('Tài liệu đính kèm', 'Attachments', '附件'),
+            _t('TĂ i liá»‡u Ä‘Ă­nh kĂ¨m', 'Attachments', 'é™„ä»¶'),
             Icons.attach_file_rounded,
           ),
           const SizedBox(height: 12),
@@ -446,7 +514,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
               Expanded(
                 child: _buildUploadButton(
                   Icons.image_rounded,
-                  _t('Ảnh', 'Image', '图片'),
+                  _t('áº¢nh', 'Image', 'å›¾ç‰‡'),
                   () => _pickImageOrVideo(isVideo: false),
                 ),
               ),
@@ -462,7 +530,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
               Expanded(
                 child: _buildUploadButton(
                   Icons.insert_drive_file_rounded,
-                  _t('Tài liệu', 'Document', '文档'),
+                  _t('TĂ i liá»‡u', 'Document', 'æ–‡æ¡£'),
                   _pickDocument,
                 ),
               ),
@@ -527,7 +595,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildSectionLabel(
-            _t('Tạo nhiệm vụ con', 'Create subtasks', '创建子任务'),
+            _t('Táº¡o nhiá»‡m vá»¥ con', 'Create subtasks', 'åˆ›å»ºå­ä»»å¡'),
             Icons.checklist_rounded,
           ),
           const SizedBox(height: 10),
@@ -539,9 +607,9 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                   style: TextStyle(color: theme.textColor),
                   decoration: _inputDecoration(
                     _t(
-                      'Nhập tên nhiệm vụ con',
+                      'Nháº­p tĂªn nhiá»‡m vá»¥ con',
                       'Enter subtask name',
-                      '请输入子任务名称',
+                      'è¯·è¾“å…¥å­ä»»å¡åç§°',
                     ),
                   ),
                 ),
@@ -585,9 +653,9 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                         iconSize: 20,
                         visualDensity: VisualDensity.compact,
                         tooltip: _t(
-                          'Xóa nhiệm vụ con',
+                          'XĂ³a nhiá»‡m vá»¥ con',
                           'Remove subtask',
-                          '删除子任务',
+                          'åˆ é™¤å­ä»»å¡',
                         ),
                       ),
                     ],
@@ -702,10 +770,10 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
 
   String _subtaskLabel(String value) {
     switch (value) {
-      case 'Phân tích yêu cầu':
-        return _t('Phân tích yêu cầu', 'Analyze requirements', '分析需求');
-      case 'Thiết kế giao diện':
-        return _t('Thiết kế giao diện', 'Design interface', '设计界面');
+      case 'PhĂ¢n tĂ­ch yĂªu cáº§u':
+        return _t('PhĂ¢n tĂ­ch yĂªu cáº§u', 'Analyze requirements', 'åˆ†æéœ€æ±‚');
+      case 'Thiáº¿t káº¿ giao diá»‡n':
+        return _t('Thiáº¿t káº¿ giao diá»‡n', 'Design interface', 'è®¾è®¡ç•Œé¢');
       default:
         return value;
     }
@@ -720,13 +788,13 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
   String _memberName(Map<String, dynamic> member) {
     return member['name']?.toString() ??
         member['email']?.toString() ??
-        _t('Thành viên', 'Member', '成员');
+        _t('ThĂ nh viĂªn', 'Member', 'æˆå‘˜');
   }
 
   String _memberRole(Map<String, dynamic> member) {
     return member['role']?.toString() ??
         member['role_name']?.toString() ??
-        _t('Thành viên', 'Member', '成员');
+        _t('ThĂ nh viĂªn', 'Member', 'æˆå‘˜');
   }
 
   Future<void> _pickImageOrVideo({required bool isVideo}) async {
@@ -736,12 +804,14 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
     if (picked == null) return;
 
     final size = await picked.length();
+    final fileBase64 = base64Encode(await picked.readAsBytes());
     _addAttachment(
       fileName: picked.name,
-      fileUrl: picked.path,
+      fileUrl: '',
       fileType: isVideo ? 'video' : 'image',
       mimeType: picked.mimeType,
       fileSize: size,
+      fileBase64: fileBase64,
     );
   }
 
@@ -764,13 +834,28 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
     );
     final file = result?.files.single;
     if (file == null) return;
+    final path = file.path;
+    final bytes = file.bytes ??
+        (path == null || path.isEmpty ? null : await File(path).readAsBytes());
+    if (bytes == null || bytes.isEmpty) {
+      _showMessage(
+        _t(
+          'KhĂ´ng thá»ƒ Ä‘á»c file Ä‘Ă£ chá»n',
+          'Unable to read the selected file',
+          'Unable to read the selected file',
+        ),
+        isError: true,
+      );
+      return;
+    }
 
     _addAttachment(
       fileName: file.name,
-      fileUrl: file.path ?? file.name,
+      fileUrl: '',
       fileType: 'document',
       mimeType: null,
       fileSize: file.size,
+      fileBase64: base64Encode(bytes),
     );
   }
 
@@ -780,6 +865,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
     required String fileType,
     String? mimeType,
     int? fileSize,
+    String? fileBase64,
   }) {
     setState(() {
       _attachments.add({
@@ -788,6 +874,8 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
         'file_type': fileType,
         'mime_type': mimeType,
         'file_size': fileSize,
+        if (fileBase64 != null && fileBase64.isNotEmpty)
+          'file_base64': fileBase64,
       });
     });
   }
@@ -818,9 +906,9 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
     if (projectId.isEmpty) {
       _showMessage(
         _t(
-          'Không xác định được dự án cần tạo nhiệm vụ',
+          'KhĂ´ng xĂ¡c Ä‘á»‹nh Ä‘Æ°á»£c dá»± Ă¡n cáº§n táº¡o nhiá»‡m vá»¥',
           'Unable to identify the project',
-          '无法确定项目',
+          'æ— æ³•ç¡®å®é¡¹ç›®',
         ),
         isError: true,
       );
@@ -830,9 +918,9 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
     if (title.isEmpty) {
       _showMessage(
         _t(
-          'Vui lòng nhập tên nhiệm vụ',
+          'Vui lĂ²ng nháº­p tĂªn nhiá»‡m vá»¥',
           'Please enter task name',
-          '请输入任务名称',
+          'è¯·è¾“å…¥ä»»å¡åç§°',
         ),
         isError: true,
       );
@@ -844,9 +932,9 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
         _endDate!.isBefore(_startDate!)) {
       _showMessage(
         _t(
-          'Ngày kết thúc không được trước ngày bắt đầu',
+          'NgĂ y káº¿t thĂºc khĂ´ng Ä‘Æ°á»£c trÆ°á»›c ngĂ y báº¯t Ä‘áº§u',
           'End date cannot be before start date',
-          '结束日期不能早于开始日期',
+          'ç»“æŸæ—¥æœŸä¸èƒ½æ—©äºå¼€å§‹æ—¥æœŸ',
         ),
         isError: true,
       );
@@ -858,16 +946,39 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
     });
 
     try {
-      await _projectService.createTask(
-        projectId: projectId,
-        title: title,
-        description: description.isEmpty ? null : description,
-        startDate: _startDate,
-        endDate: _endDate,
-        assigneeIds: _selectedMemberIds.toList(),
-        subtasks: _subtasks,
-        attachments: _attachments,
-      );
+      if (widget.isEditing) {
+        final taskId = widget.initialTask?['id']?.toString() ?? '';
+        if (taskId.isEmpty) {
+          throw ApiException(
+            _t(
+              'Kh\u00f4ng x\u00e1c \u0111\u1ecbnh \u0111\u01b0\u1ee3c nhi\u1ec7m v\u1ee5 c\u1ea7n s\u1eeda',
+              'Unable to identify the task',
+              '\u65e0\u6cd5\u786e\u5b9a\u4efb\u52a1',
+            ),
+          );
+        }
+        await _projectService.updateTask(
+          taskId: taskId,
+          title: title,
+          description: description,
+          dueDate: _endDate,
+          assigneeIds: _selectedMemberIds.toList(),
+          assigneeId: _selectedMemberIds.isEmpty
+              ? ''
+              : _selectedMemberIds.first.toString(),
+        );
+      } else {
+        await _projectService.createTask(
+          projectId: projectId,
+          title: title,
+          description: description.isEmpty ? null : description,
+          startDate: _startDate,
+          endDate: _endDate,
+          assigneeIds: _selectedMemberIds.toList(),
+          subtasks: _subtasks,
+          attachments: _attachments,
+        );
+      }
 
       if (!mounted) return;
       navigator.pop(true);

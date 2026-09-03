@@ -290,7 +290,6 @@ class _ElectronicCvScreenState extends State<ElectronicCvScreen> {
             _projectsController,
             'Dự án / kinh nghiệm',
             maxLines: 7,
-            enabled: false,
           ),
           _buildInput(theme, _certificatesController, 'Chứng chỉ / hoạt động / sở thích', maxLines: 4),
         ]),

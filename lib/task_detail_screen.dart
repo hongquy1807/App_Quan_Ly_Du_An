@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'app_theme_controller.dart';
+import 'create_task_screen.dart';
 import 'services/auth_service.dart';
 import 'services/project_service.dart';
 import 'utils/color_utils.dart';
@@ -51,6 +52,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   bool _isSubmittingComment = false;
   bool _isEditingTask = false;
   bool _isSavingTask = false;
+  bool _openedInitialEdit = false;
   String? _editingCommentId;
   late DateTime _editingTaskDueDate;
   late String _editingTaskStatusCode;
@@ -64,15 +66,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     _project = Map<String, dynamic>.from(widget.project);
     _canUpdateWork = _task['can_update_work'] != false;
     _loadLanguage();
-    _taskStatus = _task['status']?.toString() ?? 'Chưa nhận';
+    _taskStatus = _task['status']?.toString() ?? 'ChÆ°a nháº­n';
     _editingTaskDueDate = _task['dueDate'] is DateTime
         ? _task['dueDate'] as DateTime
         : DateTime.now();
     _editingTaskStatusCode = _task['statusCode']?.toString() ??
         _statusCodeFromTaskStatus(_taskStatus);
-    if (widget.startEditing) {
-      _startEditTaskInline();
-    }
     _loadTaskDetail();
   }
 
@@ -104,7 +103,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     if (taskId.isEmpty) {
       setState(() {
         _isLoadingDetail = false;
-        _detailError = 'Không tìm thấy ID nhiệm vụ.';
+        _detailError = 'KhĂ´ng tĂ¬m tháº¥y ID nhiá»‡m vá»¥.';
       });
       return;
     }
@@ -185,6 +184,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           );
         _isLoadingDetail = false;
       });
+      if (widget.startEditing && !_openedInitialEdit) {
+        _openedInitialEdit = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _openEditTaskForm();
+        });
+      }
     } catch (err) {
       if (!mounted) return;
       setState(() {
@@ -207,7 +212,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       'id': task['id']?.toString() ?? _task['id']?.toString() ?? '',
       'title': task['title']?.toString() ?? '',
       'description': task['description']?.toString() ?? '',
-      'assignee': task['assignee']?.toString() ?? 'Cả team',
+      'assignee': task['assignee']?.toString() ?? 'Cáº£ team',
       'assignee_id': task['assignee_id'],
       'assigneeId': task['assigneeId']?.toString() ??
           task['assignee_id']?.toString() ??
@@ -237,7 +242,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       'id': attachment['id']?.toString() ?? '',
       'name': attachment['name']?.toString() ??
           attachment['file_name']?.toString() ??
-          'Tài liệu',
+          'TĂ i liá»‡u',
       'size': _formatFileSize(attachment['size'] ?? attachment['file_size']),
       'url': attachment['url'] ?? attachment['file_url'],
       'scope': attachment['scope']?.toString() ??
@@ -275,6 +280,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   String _attachmentUrl(Map<String, dynamic> file) {
     final rawUrl = file['url']?.toString().trim().replaceAll('\\', '/') ?? '';
     if (rawUrl.isEmpty) return '';
+    if (_isLocalFilePath(rawUrl)) return rawUrl;
     if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
       final uri = Uri.tryParse(rawUrl);
       if (uri == null) return rawUrl;
@@ -283,6 +289,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     final encodedPath = _encodeFilePath(rawUrl);
     final path = encodedPath.startsWith('/') ? encodedPath : '/$encodedPath';
     return '${_fileBaseUrl()}$path';
+  }
+
+  bool _isLocalFilePath(String value) {
+    return value.startsWith('/data/') ||
+        value.startsWith('/storage/') ||
+        value.startsWith('file://');
   }
 
   bool _isImageAttachment(Map<String, dynamic> file) {
@@ -301,7 +313,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       'id': comment['id']?.toString() ?? '',
       'user': comment['user']?.toString() ??
           comment['user_name']?.toString() ??
-          'Thành viên',
+          'ThĂ nh viĂªn',
       'avatar': comment['avatar']?.toString() ?? '',
       'content': comment['content']?.toString() ?? '',
       'time': _parseApiDate(comment['time'] ?? comment['created_at']),
@@ -354,36 +366,36 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     switch (task['id']?.toString()) {
       case '1':
         return _t(
-          'Thiết kế UI cho màn hình chính',
+          'Thiáº¿t káº¿ UI cho mĂ n hĂ¬nh chĂ­nh',
           'Design UI for the main screen',
-          '设计主屏幕 UI',
+          'è®¾è®¡ä¸»å±å¹• UI',
         );
       case '2':
-        return _t('Xây dựng API đăng nhập', 'Build login API', '构建登录 API');
+        return _t('XĂ¢y dá»±ng API Ä‘Äƒng nháº­p', 'Build login API', 'æ„å»ºç™»å½• API');
       case '3':
         return _t(
-          'Tối ưu hiệu suất ứng dụng',
+          'Tá»‘i Æ°u hiá»‡u suáº¥t á»©ng dá»¥ng',
           'Optimize app performance',
-          '优化应用性能',
+          'ä¼˜åŒ–åº”ç”¨æ€§èƒ½',
         );
       case '4':
         return _t(
-          'Phân tích yêu cầu dự án',
+          'PhĂ¢n tĂ­ch yĂªu cáº§u dá»± Ă¡n',
           'Analyze project requirements',
-          '分析项目需求',
+          'åˆ†æé¡¹ç›®éœ€æ±‚',
         );
       case '5':
-        return _t('Thiết kế database', 'Design database', '设计数据库');
+        return _t('Thiáº¿t káº¿ database', 'Design database', 'è®¾è®¡æ•°æ®åº“');
       case '6':
-        return _t('Viết unit test', 'Write unit tests', '编写单元测试');
+        return _t('Viáº¿t unit test', 'Write unit tests', 'ç¼–å†™å•å…ƒæµ‹è¯•');
       case '7':
         return _t(
-          'Deploy lên production',
+          'Deploy lĂªn production',
           'Deploy to production',
-          '部署到生产环境',
+          'éƒ¨ç½²åˆ°ç”Ÿäº§ç¯å¢ƒ',
         );
       case '8':
-        return _t('Code review', 'Code review', '代码审查');
+        return _t('Code review', 'Code review', 'ä»£ç å®¡æŸ¥');
       default:
         return task['title']?.toString() ?? '';
     }
@@ -393,40 +405,40 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     switch (task['id']?.toString()) {
       case '1':
         return _t(
-          'Thiết kế giao diện người dùng cho màn hình chính của ứng dụng',
+          'Thiáº¿t káº¿ giao diá»‡n ngÆ°á»i dĂ¹ng cho mĂ n hĂ¬nh chĂ­nh cá»§a á»©ng dá»¥ng',
           'Design the user interface for the app main screen',
-          '为应用主屏幕设计用户界面',
+          'ä¸ºåº”ç”¨ä¸»å±å¹•è®¾è®¡ç”¨æˆ·ç•Œé¢',
         );
       case '2':
         return _t(
-          'Tạo API cho chức năng đăng nhập và đăng ký',
+          'Táº¡o API cho chá»©c nÄƒng Ä‘Äƒng nháº­p vĂ  Ä‘Äƒng kĂ½',
           'Create APIs for sign-in and sign-up',
-          '创建登录和注册功能的 API',
+          'åˆ›å»ºç™»å½•å’Œæ³¨å†ŒåŸèƒ½ç„ API',
         );
       case '3':
         return _t(
-          'Tối ưu hóa hiệu suất và giảm thời gian tải',
+          'Tá»‘i Æ°u hĂ³a hiá»‡u suáº¥t vĂ  giáº£m thá»i gian táº£i',
           'Optimize performance and reduce loading time',
-          '优化性能并减少加载时间',
+          'ä¼˜åŒ–æ€§èƒ½å¹¶å‡å°‘å è½½æ—¶é—´',
         );
       case '4':
         return _t(
-          'Phân tích và document yêu cầu từ khách hàng',
+          'PhĂ¢n tĂ­ch vĂ  document yĂªu cáº§u tá»« khĂ¡ch hĂ ng',
           'Analyze and document customer requirements',
-          '分析并记录客户需求',
+          'åˆ†æå¹¶è®°å½•å®¢æˆ·éœ€æ±‚',
         );
       case '5':
         return _t(
-          'Thiết kế cơ sở dữ liệu cho hệ thống',
+          'Thiáº¿t káº¿ cÆ¡ sá»Ÿ dá»¯ liá»‡u cho há»‡ thá»‘ng',
           'Design the database for the system',
-          '为系统设计数据库',
+          'ä¸ºç³»ç»Ÿè®¾è®¡æ•°æ®åº“',
         );
       default:
         return task['description']?.toString() ??
             _t(
-              'Chưa có mô tả cho nhiệm vụ này.',
+              'ChÆ°a cĂ³ mĂ´ táº£ cho nhiá»‡m vá»¥ nĂ y.',
               'No description for this task yet.',
-              '此任务暂无描述。',
+              'æ­¤ä»»å¡æ‚æ— æè¿°ă€‚',
             );
     }
   }
@@ -434,13 +446,13 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   String _projectName(Map<String, dynamic> project) {
     switch (project['id']?.toString()) {
       case '1':
-        return _t('App di động', 'Mobile app', '移动应用');
+        return _t('App di Ä‘á»™ng', 'Mobile app', 'ç§»å¨åº”ç”¨');
       case '2':
-        return _t('Website bán hàng', 'Sales website', '销售网站');
+        return _t('Website bĂ¡n hĂ ng', 'Sales website', 'é”€å”®ç½‘ç«™');
       case '3':
-        return _t('Dự án AI', 'AI project', 'AI 项目');
+        return _t('Dá»± Ă¡n AI', 'AI project', 'AI é¡¹ç›®');
       case '4':
-        return _t('Hệ thống CRM', 'CRM system', 'CRM 系统');
+        return _t('Há»‡ thá»‘ng CRM', 'CRM system', 'CRM ç³»ç»Ÿ');
       default:
         return project['name']?.toString() ?? '';
     }
@@ -452,14 +464,14 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
   String _statusLabel(String status) {
     switch (status) {
-      case 'Chưa nhận':
-      case 'Chưa bắt đầu':
-        return _t('Chưa nhận', 'Not accepted', '未接收');
-      case 'Đã nhận nhiệm vụ':
-      case 'Đang làm':
-        return _t('Đã nhận nhiệm vụ', 'Accepted task', '已接收任务');
-      case 'Hoàn thành':
-        return _t('Hoàn thành', 'Completed', '已完成');
+      case 'ChÆ°a nháº­n':
+      case 'ChÆ°a báº¯t Ä‘áº§u':
+        return _t('ChÆ°a nháº­n', 'Not accepted', 'æœªæ¥æ”¶');
+      case 'ÄĂ£ nháº­n nhiá»‡m vá»¥':
+      case 'Äang lĂ m':
+        return _t('ÄĂ£ nháº­n nhiá»‡m vá»¥', 'Accepted task', 'å·²æ¥æ”¶ä»»å¡');
+      case 'HoĂ n thĂ nh':
+        return _t('HoĂ n thĂ nh', 'Completed', 'å·²å®Œæˆ');
       default:
         return status;
     }
@@ -468,17 +480,17 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   String _statusCodeFromTaskStatus(String status) {
     switch (status) {
       case 'in_progress':
-      case 'Đã nhận nhiệm vụ':
-      case 'Đang làm':
+      case 'ÄĂ£ nháº­n nhiá»‡m vá»¥':
+      case 'Äang lĂ m':
         return 'in_progress';
       case 'done':
-      case 'Hoàn thành':
+      case 'HoĂ n thĂ nh':
         return 'done';
       case 'review':
         return 'review';
       case 'todo':
-      case 'Chưa nhận':
-      case 'Chưa bắt đầu':
+      case 'ChÆ°a nháº­n':
+      case 'ChÆ°a báº¯t Ä‘áº§u':
       default:
         return 'todo';
     }
@@ -487,14 +499,14 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   String _labelFromStatusCode(String statusCode) {
     switch (statusCode) {
       case 'in_progress':
-        return _t('Đã nhận nhiệm vụ', 'Accepted task', '已接收任务');
+        return _t('ÄĂ£ nháº­n nhiá»‡m vá»¥', 'Accepted task', 'å·²æ¥æ”¶ä»»å¡');
       case 'done':
-        return _t('Hoàn thành', 'Completed', '已完成');
+        return _t('HoĂ n thĂ nh', 'Completed', 'å·²å®Œæˆ');
       case 'review':
-        return _t('Chờ duyệt', 'Pending review', '待审核');
+        return _t('Chá» duyá»‡t', 'Pending review', 'å¾…å®¡æ ¸');
       case 'todo':
       default:
-        return _t('Chưa nhận', 'Not accepted', '未接收');
+        return _t('ChÆ°a nháº­n', 'Not accepted', 'æœªæ¥æ”¶');
     }
   }
 
@@ -518,19 +530,44 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         assigneeId.isEmpty || assigneeId == 'null' ? '' : assigneeId;
   }
 
-  void _startEditTaskInline() {
-    _fillTaskEditControllers();
-    _isEditingTask = true;
+  void _toggleEditTaskInline() {
+    _openEditTaskForm();
   }
 
-  void _toggleEditTaskInline() {
-    setState(() {
-      if (_isEditingTask) {
-        _isEditingTask = false;
-      } else {
-        _startEditTaskInline();
-      }
-    });
+  Future<void> _openEditTaskForm() async {
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CreateTaskScreen(
+          project: _project,
+          members: _assigneeOptions,
+          initialTask: {
+            ..._task,
+            'subtasks': _subtasks,
+            'assignee_ids': _currentAssigneeIds(),
+          },
+          isEditing: true,
+        ),
+      ),
+    );
+
+    if (!mounted || result != true) return;
+    await _loadTaskDetail();
+  }
+
+  List<int> _currentAssigneeIds() {
+    final rawIds = _task['assignee_ids'];
+    if (rawIds is List) {
+      return rawIds
+          .map((value) => int.tryParse(value.toString()))
+          .whereType<int>()
+          .toList();
+    }
+
+    final assigneeId = int.tryParse(
+      (_task['assigneeId'] ?? _task['assignee_id'] ?? '').toString(),
+    );
+    return assigneeId == null ? <int>[] : <int>[assigneeId];
   }
 
   void _cancelEditTaskInline() {
@@ -568,7 +605,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            _t('Đã cập nhật nhiệm vụ', 'Task updated', '任务已更新'),
+            _t('ÄĂ£ cáº­p nháº­t nhiá»‡m vá»¥', 'Task updated', 'ä»»å¡å·²æ›´æ–°'),
           ),
           backgroundColor: const Color(0xFF10B981),
         ),
@@ -749,7 +786,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _t('Chi tiết nhiệm vụ', 'Task details', '任务详情'),
+                          _t('Chi tiáº¿t nhiá»‡m vá»¥', 'Task details', 'ä»»å¡è¯¦æƒ…'),
                           style: TextStyle(
                             fontSize: 12,
                             color: theme.mutedTextColor,
@@ -770,20 +807,16 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                   ),
                   IconButton(
                     onPressed: _toggleEditTaskInline,
-                    icon: Icon(
-                      _isEditingTask
-                          ? Icons.close_rounded
-                          : Icons.edit_rounded,
-                    ),
+                    icon: const Icon(Icons.edit_rounded),
                     color: theme.textColor,
-                    tooltip: _t('Sửa nhiệm vụ', 'Edit task', '编辑任务'),
+                    tooltip: _t('Sá»­a nhiá»‡m vá»¥', 'Edit task', 'ç¼–è¾‘ä»»å¡'),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 16),
 
-            // Nội dung chính
+            // Ná»™i dung chĂ­nh
             Expanded(
               child: _isLoadingDetail
                   ? Center(child: CircularProgressIndicator(color: projectColor))
@@ -795,7 +828,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Thông tin cơ bản
+                    // ThĂ´ng tin cÆ¡ báº£n
                     _buildInfoSection(projectColor),
                     const SizedBox(height: 16),
 
@@ -803,7 +836,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                     _buildSubtaskSection(),
                     const SizedBox(height: 16),
 
-                    // Tài liệu của người nhận
+                    // TĂ i liá»‡u cá»§a ngÆ°á»i nháº­n
                     _buildMyAttachmentSection(),
                     const SizedBox(height: 16),
 
@@ -845,7 +878,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         children: [
           // Header
           Text(
-            _t('Thông tin nhiệm vụ', 'Task information', '任务信息'),
+            _t('ThĂ´ng tin nhiá»‡m vá»¥', 'Task information', 'ä»»å¡ä¿¡æ¯'),
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
@@ -858,13 +891,13 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             const SizedBox(height: 16),
           ],
 
-          // Grid thông tin
+          // Grid thĂ´ng tin
           Row(
             children: [
               Expanded(
                 child: _buildInfoItem(
                   icon: Icons.calendar_today_rounded,
-                  label: _t('Ngày giao', 'Assigned date', '分配日期'),
+                  label: _t('NgĂ y giao', 'Assigned date', 'åˆ†é…æ—¥æœŸ'),
                   value:
                       '${createdAt.day.toString().padLeft(2, '0')}/${createdAt.month.toString().padLeft(2, '0')}/${createdAt.year}',
                   color: const Color(0xFF6366F1),
@@ -874,7 +907,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               Expanded(
                 child: _buildInfoItem(
                   icon: Icons.access_time_rounded,
-                  label: _t('Hạn chót', 'Deadline', '截止日期'),
+                  label: _t('Háº¡n chĂ³t', 'Deadline', 'æˆªæ­¢æ—¥æœŸ'),
                   value:
                       '${dueDate.day.toString().padLeft(2, '0')}/${dueDate.month.toString().padLeft(2, '0')}/${dueDate.year}',
                   color: isOverdue
@@ -892,7 +925,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               Expanded(
                 child: _buildInfoItem(
                   icon: Icons.person_rounded,
-                  label: _t('Người thực hiện', 'Assignee', '负责人'),
+                  label: _t('NgÆ°á»i thá»±c hiá»‡n', 'Assignee', 'è´Ÿè´£äºº'),
                   value: task['assignee'],
                   color: const Color(0xFF8B5CF6),
                 ),
@@ -901,7 +934,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           ),
           const SizedBox(height: 12),
 
-          // Dự án
+          // Dá»± Ă¡n
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -925,7 +958,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _t('Thuộc dự án', 'Project', '所属项目'),
+                        _t('Thuá»™c dá»± Ă¡n', 'Project', 'æ‰€å±é¡¹ç›®'),
                         style: TextStyle(
                           fontSize: 12,
                           color: theme.mutedTextColor,
@@ -959,9 +992,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           ),
           const SizedBox(height: 12),
 
-          // Mô tả
+          // MĂ´ táº£
           Text(
-            _t('Mô tả', 'Description', '描述'),
+            _t('MĂ´ táº£', 'Description', 'æè¿°'),
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -988,7 +1021,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           _buildTaskAttachmentSection(),
           const SizedBox(height: 16),
           Text(
-            _t('Trạng thái', 'Status', '状态'),
+            _t('Tráº¡ng thĂ¡i', 'Status', 'ç¶æ€'),
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -1027,7 +1060,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             autofocus: true,
             style: TextStyle(color: theme.textColor, fontWeight: FontWeight.w600),
             decoration: InputDecoration(
-              labelText: _t('Tên nhiệm vụ', 'Task name', '任务名称'),
+              labelText: _t('TĂªn nhiá»‡m vá»¥', 'Task name', 'ä»»å¡åç§°'),
               labelStyle: TextStyle(color: theme.mutedTextColor),
               filled: true,
               fillColor: theme.surfaceColor,
@@ -1056,7 +1089,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             maxLines: 4,
             style: TextStyle(color: theme.textColor),
             decoration: InputDecoration(
-              labelText: _t('Mô tả', 'Description', '描述'),
+              labelText: _t('MĂ´ táº£', 'Description', 'æè¿°'),
               labelStyle: TextStyle(color: theme.mutedTextColor),
               filled: true,
               fillColor: theme.surfaceColor,
@@ -1101,7 +1134,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                   },
             child: InputDecorator(
               decoration: InputDecoration(
-                labelText: _t('Hạn chót', 'Deadline', '截止日期'),
+                labelText: _t('Háº¡n chĂ³t', 'Deadline', 'æˆªæ­¢æ—¥æœŸ'),
                 labelStyle: TextStyle(color: theme.mutedTextColor),
                 filled: true,
                 fillColor: theme.surfaceColor,
@@ -1138,7 +1171,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             initialValue: selectedAssigneeValue,
             dropdownColor: theme.surfaceColor,
             decoration: InputDecoration(
-              labelText: _t('Người nhận nhiệm vụ', 'Assignee', '负责人'),
+              labelText: _t('NgÆ°á»i nháº­n nhiá»‡m vá»¥', 'Assignee', 'è´Ÿè´£äºº'),
               labelStyle: TextStyle(color: theme.mutedTextColor),
               filled: true,
               fillColor: theme.surfaceColor,
@@ -1163,7 +1196,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               DropdownMenuItem<String>(
                 value: '',
                 child: Text(
-                  _t('Cả team', 'Whole team', '全团队'),
+                  _t('Cáº£ team', 'Whole team', 'å…¨å›¢é˜Ÿ'),
                   style: TextStyle(color: theme.textColor),
                 ),
               ),
@@ -1197,7 +1230,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             initialValue: _editingTaskStatusCode,
             dropdownColor: theme.surfaceColor,
             decoration: InputDecoration(
-              labelText: _t('Trạng thái', 'Status', '状态'),
+              labelText: _t('Tráº¡ng thĂ¡i', 'Status', 'ç¶æ€'),
               labelStyle: TextStyle(color: theme.mutedTextColor),
               filled: true,
               fillColor: theme.surfaceColor,
@@ -1240,7 +1273,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             children: [
               TextButton(
                 onPressed: _isSavingTask ? null : _cancelEditTaskInline,
-                child: Text(_t('Hủy', 'Cancel', '取消')),
+                child: Text(_t('Há»§y', 'Cancel', 'å–æ¶ˆ')),
               ),
               const SizedBox(width: 8),
               ElevatedButton(
@@ -1263,7 +1296,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                           color: Colors.white,
                         ),
                       )
-                    : Text(_t('Lưu', 'Save', '保存')),
+                    : Text(_t('LÆ°u', 'Save', 'ä¿å­˜')),
               ),
             ],
           ),
@@ -1287,7 +1320,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             ),
             const SizedBox(height: 14),
             Text(
-              _detailError ?? _t('Không thể tải nhiệm vụ', 'Unable to load task', '无法加载任务'),
+              _detailError ?? _t('KhĂ´ng thá»ƒ táº£i nhiá»‡m vá»¥', 'Unable to load task', 'æ— æ³•å è½½ä»»å¡'),
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 15,
@@ -1299,7 +1332,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             ElevatedButton.icon(
               onPressed: _loadTaskDetail,
               icon: const Icon(Icons.refresh_rounded),
-              label: Text(_t('Thử lại', 'Retry', '重试')),
+              label: Text(_t('Thá»­ láº¡i', 'Retry', 'é‡è¯•')),
               style: ElevatedButton.styleFrom(
                 backgroundColor: projectColor,
                 foregroundColor: Colors.white,
@@ -1318,11 +1351,11 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
     return Column(
       children: [
-        _buildStatusOption('Chưa nhận', Icons.inbox_rounded),
+        _buildStatusOption('ChÆ°a nháº­n', Icons.inbox_rounded),
         const SizedBox(height: 8),
-        _buildStatusOption('Đã nhận nhiệm vụ', Icons.assignment_ind_rounded),
+        _buildStatusOption('ÄĂ£ nháº­n nhiá»‡m vá»¥', Icons.assignment_ind_rounded),
         const SizedBox(height: 8),
-        _buildStatusOption('Hoàn thành', Icons.check_circle_rounded),
+        _buildStatusOption('HoĂ n thĂ nh', Icons.check_circle_rounded),
       ],
     );
   }
@@ -1330,11 +1363,11 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   Widget _buildStatusOption(String status, IconData icon) {
     final theme = appThemeController;
     final isSelected = _taskStatus == status ||
-        (status == 'Đã nhận nhiệm vụ' && _taskStatus == 'Đang làm') ||
-        (status == 'Chưa nhận' && _taskStatus == 'Chưa bắt đầu');
-    final color = status == 'Hoàn thành'
+        (status == 'ÄĂ£ nháº­n nhiá»‡m vá»¥' && _taskStatus == 'Äang lĂ m') ||
+        (status == 'ChÆ°a nháº­n' && _taskStatus == 'ChÆ°a báº¯t Ä‘áº§u');
+    final color = status == 'HoĂ n thĂ nh'
         ? const Color(0xFF10B981)
-        : status == 'Đã nhận nhiệm vụ'
+        : status == 'ÄĂ£ nháº­n nhiá»‡m vá»¥'
         ? const Color(0xFF6366F1)
         : const Color(0xFF6B7280);
 
@@ -1346,7 +1379,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         setState(() {
           _taskStatus = status;
           _task['status'] = status;
-          _task['isCompleted'] = status == 'Hoàn thành';
+          _task['isCompleted'] = status == 'HoĂ n thĂ nh';
         });
 
         try {
@@ -1429,7 +1462,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           Expanded(
             child: Text(
               _t(
-                'Bạn chỉ có quyền xem nhiệm vụ này',
+                'Báº¡n chá»‰ cĂ³ quyá»n xem nhiá»‡m vá»¥ nĂ y',
                 'You can only view this task',
                 'You can only view this task',
               ),
@@ -1509,7 +1542,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                '📋 ${_t('Nhiệm vụ con', 'Subtasks', '子任务')}',
+                'đŸ“‹ ${_t('Nhiá»‡m vá»¥ con', 'Subtasks', 'å­ä»»å¡')}',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -1530,7 +1563,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           ..._subtasks.map((subtask) {
             return _buildSubtaskItem(subtask);
           }),
-          // Nút thêm subtask
+          // NĂºt thĂªm subtask
           if (_canUpdateWork)
             GestureDetector(
             onTap: () {
@@ -1552,7 +1585,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                   ),
                   const SizedBox(width: 4),
                   Text(
-                    _t('Thêm subtask', 'Add subtask', '添加子任务'),
+                    _t('ThĂªm subtask', 'Add subtask', 'æ·»å å­ä»»å¡'),
                     style: TextStyle(
                       fontSize: 13,
                       color: theme.mutedTextColor,
@@ -1606,7 +1639,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              _t('Tài liệu đính kèm', 'Task attachments', '任务附件'),
+              _t('TĂ i liá»‡u Ä‘Ă­nh kĂ¨m', 'Task attachments', 'ä»»å¡é™„ä»¶'),
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
@@ -1647,7 +1680,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                _t('Tài liệu của bạn', 'Your documents', '你的资料'),
+                _t('TĂ i liá»‡u cá»§a báº¡n', 'Your documents', 'ä½ ç„èµ„æ–™'),
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -1662,7 +1695,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               Expanded(
                 child: _buildUploadTypeButton(
                   icon: Icons.image_rounded,
-                  label: _t('Ảnh', 'Image', '图片'),
+                  label: _t('áº¢nh', 'Image', 'å›¾ç‰‡'),
                 ),
               ),
               const SizedBox(width: 8),
@@ -1676,7 +1709,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               Expanded(
                 child: _buildUploadTypeButton(
                   icon: Icons.insert_drive_file_rounded,
-                  label: _t('Tài liệu', 'Document', '文档'),
+                  label: _t('TĂ i liá»‡u', 'Document', 'æ–‡æ¡£'),
                 ),
               ),
             ],
@@ -1704,7 +1737,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             child: ElevatedButton.icon(
               onPressed: _handleCompleteTask,
               icon: const Icon(Icons.check_circle_rounded),
-              label: Text(_t('Hoàn thành', 'Complete', '完成')),
+              label: Text(_t('HoĂ n thĂ nh', 'Complete', 'å®Œæˆ')),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF10B981),
                 foregroundColor: Colors.white,
@@ -1771,7 +1804,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     if (!_canUpdateWork) {
       _showAttachmentMessage(
         _t(
-          'Bạn chỉ có quyền xem nhiệm vụ này',
+          'Báº¡n chá»‰ cĂ³ quyá»n xem nhiá»‡m vá»¥ nĂ y',
           'You can only view this task',
           'You can only view this task',
         ),
@@ -1859,9 +1892,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     if (path == null || path.isEmpty) {
       throw ApiException(
         _t(
-          'Không thể đọc file đã chọn.',
+          'KhĂ´ng thá»ƒ Ä‘á»c file Ä‘Ă£ chá»n.',
           'Unable to read the selected file.',
-          '无法读取所选文件。',
+          'æ— æ³•è¯»å–æ‰€é€‰æ–‡ä»¶ă€‚',
         ),
       );
     }
@@ -1873,7 +1906,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     if (!_canUpdateWork) {
       _showAttachmentMessage(
         _t(
-          'Bạn chỉ có quyền xem nhiệm vụ này',
+          'Báº¡n chá»‰ cĂ³ quyá»n xem nhiá»‡m vá»¥ nĂ y',
           'You can only view this task',
           'You can only view this task',
         ),
@@ -1883,24 +1916,24 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     final previousStatus = _taskStatus;
     final previousCompleted = _task['isCompleted'] == true;
     setState(() {
-      _taskStatus = 'Hoàn thành';
-      _task['status'] = 'Hoàn thành';
+      _taskStatus = 'HoĂ n thĂ nh';
+      _task['status'] = 'HoĂ n thĂ nh';
       _task['isCompleted'] = true;
     });
 
     try {
       await _projectService.updateTaskStatus(
         taskId: _task['id'].toString(),
-        status: 'Hoàn thành',
+        status: 'HoĂ n thĂ nh',
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             _t(
-              'Nhiệm vụ đã được đánh dấu hoàn thành',
+              'Nhiá»‡m vá»¥ Ä‘Ă£ Ä‘Æ°á»£c Ä‘Ă¡nh dáº¥u hoĂ n thĂ nh',
               'Task marked as completed',
-              '任务已标记为完成',
+              'ä»»å¡å·²æ ‡è®°ä¸ºå®Œæˆ',
             ),
           ),
           backgroundColor: const Color(0xFF10B981),
@@ -2009,7 +2042,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                       ),
                       const SizedBox(width: 10),
                       Text(
-                        _t('Tải xuống', 'Download', 'Download'),
+                        _t('Táº£i xuá»‘ng', 'Download', 'Download'),
                         style: TextStyle(color: theme.textColor),
                       ),
                     ],
@@ -2027,7 +2060,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                         ),
                         const SizedBox(width: 10),
                         Text(
-                          _t('Xóa', 'Delete', 'Delete'),
+                          _t('XĂ³a', 'Delete', 'Delete'),
                           style: const TextStyle(color: Color(0xFFEF4444)),
                         ),
                       ],
@@ -2045,7 +2078,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     final url = _attachmentUrl(file);
     if (url.isEmpty) {
       _showAttachmentMessage(
-        _t('Không có đường dẫn file', 'No file path', 'No file path'),
+        _t('KhĂ´ng cĂ³ Ä‘Æ°á»ng dáº«n file', 'No file path', 'No file path'),
       );
       return;
     }
@@ -2053,7 +2086,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     final uri = Uri.tryParse(url);
     if (uri == null) {
       _showAttachmentMessage(
-        _t('Đường dẫn file không hợp lệ', 'Invalid file URL', 'Invalid file URL'),
+        _t('ÄÆ°á»ng dáº«n file khĂ´ng há»£p lá»‡', 'Invalid file URL', 'Invalid file URL'),
       );
       return;
     }
@@ -2062,12 +2095,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       final response = await http.get(uri).timeout(const Duration(seconds: 30));
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw ApiException(
-          _t('Không thể tải file', 'Unable to download file', 'Unable to download file'),
+          _t('KhĂ´ng thá»ƒ táº£i file', 'Unable to download file', 'Unable to download file'),
         );
       }
 
       final savedPath = await FilePicker.platform.saveFile(
-        dialogTitle: _t('Lưu file', 'Save file', 'Save file'),
+        dialogTitle: _t('LÆ°u file', 'Save file', 'Save file'),
         fileName: file['name']?.toString() ?? 'attachment',
         bytes: response.bodyBytes,
       );
@@ -2075,14 +2108,14 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       if (!mounted) return;
       if (savedPath == null) return;
       _showAttachmentMessage(
-        _t('Đã tải file xuống', 'File downloaded', 'File downloaded'),
+        _t('ÄĂ£ táº£i file xuá»‘ng', 'File downloaded', 'File downloaded'),
       );
     } catch (err) {
       if (!mounted) return;
       _showAttachmentMessage(
         err is ApiException
             ? err.message
-            : _t('Không thể tải file', 'Unable to download file', 'Unable to download file'),
+            : _t('KhĂ´ng thá»ƒ táº£i file', 'Unable to download file', 'Unable to download file'),
       );
     }
   }
@@ -2092,10 +2125,16 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     final url = _attachmentUrl(file);
     if (url.isEmpty) {
       _showAttachmentMessage(
-        _t('Không có đường dẫn ảnh', 'No image path', 'No image path'),
+        _t('KhĂ´ng cĂ³ Ä‘Æ°á»ng dáº«n áº£nh', 'No image path', 'No image path'),
       );
       return;
     }
+
+    final localPath = url.startsWith('file://')
+        ? Uri.tryParse(url)?.toFilePath()
+        : url;
+    final useLocalFile =
+        localPath != null && _isLocalFilePath(url) && File(localPath).existsSync();
 
     showDialog(
       context: context,
@@ -2119,7 +2158,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                 child: InteractiveViewer(
                   minScale: 0.8,
                   maxScale: 4,
-                  child: Image.network(
+                  child: useLocalFile
+                      ? Image.file(File(localPath), fit: BoxFit.contain)
+                      : Image.network(
                     url,
                     fit: BoxFit.contain,
                     loadingBuilder: (context, child, loadingProgress) {
@@ -2139,12 +2180,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                         color: theme.surfaceColor,
                         alignment: Alignment.center,
                         child: Text(
-                          _t('Không thể tải ảnh', 'Unable to load image', 'Unable to load image'),
+                          _t('KhĂ´ng thá»ƒ táº£i áº£nh', 'Unable to load image', 'Unable to load image'),
                           style: TextStyle(color: theme.textColor),
                         ),
                       );
                     },
-                  ),
+                        ),
                 ),
               ),
               const SizedBox(height: 12),
@@ -2154,7 +2195,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                 child: ElevatedButton.icon(
                   onPressed: () => _downloadAttachment(file),
                   icon: const Icon(Icons.download_rounded),
-                  label: Text(_t('Tải xuống', 'Download', 'Download')),
+                  label: Text(_t('Táº£i xuá»‘ng', 'Download', 'Download')),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF6366F1),
                     foregroundColor: Colors.white,
@@ -2271,7 +2312,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                '💬 ${_t('Bình luận', 'Comments', '评论')}',
+                'đŸ’¬ ${_t('BĂ¬nh luáº­n', 'Comments', 'è¯„è®º')}',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -2280,9 +2321,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               ),
               Text(
                 _t(
-                  '${_comments.length} bình luận',
+                  '${_comments.length} bĂ¬nh luáº­n',
                   '${_comments.length} comments',
-                  '${_comments.length} 条评论',
+                  '${_comments.length} æ¡è¯„è®º',
                 ),
                 style: TextStyle(fontSize: 14, color: theme.mutedTextColor),
               ),
@@ -2290,8 +2331,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           ),
           const SizedBox(height: 12),
 
-          if (_canUpdateWork)
-            Row(
+          Row(
             children: [
               CircleAvatar(
                 radius: 20,
@@ -2322,9 +2362,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                           controller: _commentController,
                           decoration: InputDecoration(
                             hintText: _t(
-                              'Viết bình luận...',
+                              'Viáº¿t bĂ¬nh luáº­n...',
                               'Write a comment...',
-                              '写评论...',
+                              'å†™è¯„è®º...',
                             ),
                             hintStyle: TextStyle(color: theme.mutedTextColor),
                             border: InputBorder.none,
@@ -2371,9 +2411,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text(
                 _t(
-                  'Chưa có bình luận nào',
+                  'ChÆ°a cĂ³ bĂ¬nh luáº­n nĂ o',
                   'No comments yet',
-                  '暂无评论',
+                  'æ‚æ— è¯„è®º',
                 ),
                 style: TextStyle(color: theme.mutedTextColor, fontSize: 13),
               ),
@@ -2395,24 +2435,24 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     final diff = DateTime.now().difference(time);
     String timeText;
     if (diff.inMinutes < 1) {
-      timeText = _t('Vừa xong', 'Just now', '刚刚');
+      timeText = _t('Vá»«a xong', 'Just now', 'åˆåˆ');
     } else if (diff.inHours < 1) {
       timeText = _t(
-        '${diff.inMinutes} phút trước',
+        '${diff.inMinutes} phĂºt trÆ°á»›c',
         '${diff.inMinutes} min ago',
-        '${diff.inMinutes} 分钟前',
+        '${diff.inMinutes} åˆ†é’Ÿå‰',
       );
     } else if (diff.inDays < 1) {
       timeText = _t(
-        '${diff.inHours} giờ trước',
+        '${diff.inHours} giá» trÆ°á»›c',
         '${diff.inHours} h ago',
-        '${diff.inHours} 小时前',
+        '${diff.inHours} å°æ—¶å‰',
       );
     } else {
       timeText = _t(
-        '${diff.inDays} ngày trước',
+        '${diff.inDays} ngĂ y trÆ°á»›c',
         '${diff.inDays} days ago',
-        '${diff.inDays} 天前',
+        '${diff.inDays} å¤©å‰',
       );
     }
 
@@ -2499,7 +2539,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                           ),
                           const SizedBox(width: 10),
                           Text(
-                            _t('Sửa', 'Edit', '编辑'),
+                            _t('Sá»­a', 'Edit', 'ç¼–è¾‘'),
                             style: TextStyle(color: theme.textColor),
                           ),
                         ],
@@ -2516,7 +2556,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                           ),
                           const SizedBox(width: 10),
                           Text(
-                            _t('Xóa', 'Delete', '删除'),
+                            _t('XĂ³a', 'Delete', 'åˆ é™¤'),
                             style: const TextStyle(color: Color(0xFFEF4444)),
                           ),
                         ],
@@ -2555,9 +2595,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           maxLines: 4,
           decoration: InputDecoration(
             hintText: _t(
-              'Nhập nội dung bình luận',
+              'Nháº­p ná»™i dung bĂ¬nh luáº­n',
               'Enter comment content',
-              '输入评论内容',
+              'è¾“å…¥è¯„è®ºå†…å®¹',
             ),
             hintStyle: TextStyle(color: theme.mutedTextColor),
             filled: true,
@@ -2592,7 +2632,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           children: [
             TextButton(
               onPressed: _cancelEditComment,
-              child: Text(_t('Hủy', 'Cancel', '取消')),
+              child: Text(_t('Há»§y', 'Cancel', 'å–æ¶ˆ')),
             ),
             const SizedBox(width: 8),
             ElevatedButton(
@@ -2606,7 +2646,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                   vertical: 8,
                 ),
               ),
-              child: Text(_t('Lưu', 'Save', '保存')),
+              child: Text(_t('LÆ°u', 'Save', 'ä¿å­˜')),
             ),
           ],
         ),
@@ -2782,15 +2822,15 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       final decoded = jsonDecode(response.body);
       final data = decoded is Map<String, dynamic>
           ? decoded
-          : {'message': 'Phản hồi API không hợp lệ.'};
+          : {'message': 'Pháº£n há»“i API khĂ´ng há»£p lá»‡.'};
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw ApiException(data['message']?.toString() ?? 'Yêu cầu thất bại.');
+        throw ApiException(data['message']?.toString() ?? 'YĂªu cáº§u tháº¥t báº¡i.');
       }
       return data;
     } on ApiException {
       rethrow;
     } catch (_) {
-      throw ApiException('Không thể kết nối API. Kiểm tra backend đã chạy chưa.');
+      throw ApiException('KhĂ´ng thá»ƒ káº¿t ná»‘i API. Kiá»ƒm tra backend Ä‘Ă£ cháº¡y chÆ°a.');
     }
   }
 
@@ -2820,7 +2860,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                _t('Thêm subtask mới', 'Add new subtask', '添加新子任务'),
+                _t('ThĂªm subtask má»›i', 'Add new subtask', 'æ·»å æ–°å­ä»»å¡'),
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -2829,7 +2869,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                _t('Nhập tên subtask', 'Enter subtask name', '输入子任务名称'),
+                _t('Nháº­p tĂªn subtask', 'Enter subtask name', 'è¾“å…¥å­ä»»å¡åç§°'),
                 style: TextStyle(fontSize: 14, color: theme.mutedTextColor),
               ),
               const SizedBox(height: 16),
@@ -2838,9 +2878,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                 autofocus: true,
                 decoration: InputDecoration(
                   hintText: _t(
-                    'Nhập tên subtask...',
+                    'Nháº­p tĂªn subtask...',
                     'Enter subtask name...',
-                    '输入子任务名称...',
+                    'è¾“å…¥å­ä»»å¡åç§°...',
                   ),
                   hintStyle: TextStyle(color: theme.mutedTextColor),
                   border: OutlineInputBorder(
@@ -2877,7 +2917,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                     ),
                   ),
                   child: Text(
-                    _t('Thêm subtask', 'Add subtask', '添加子任务'),
+                    _t('ThĂªm subtask', 'Add subtask', 'æ·»å å­ä»»å¡'),
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,

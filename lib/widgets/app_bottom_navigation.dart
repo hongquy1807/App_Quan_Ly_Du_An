@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
+import '../app_language_controller.dart';
 import '../app_theme_controller.dart';
 
 enum AppBottomNavItem { home, timeline, projects, messages, me }
 
-class AppBottomNavigation extends StatefulWidget {
+class AppBottomNavigation extends StatelessWidget {
   final AppBottomNavItem currentItem;
   final bool rounded;
   final ValueChanged<AppBottomNavItem>? onItemSelected;
@@ -17,46 +17,18 @@ class AppBottomNavigation extends StatefulWidget {
     this.onItemSelected,
   });
 
-  @override
-  State<AppBottomNavigation> createState() => _AppBottomNavigationState();
-}
-
-class _AppBottomNavigationState extends State<AppBottomNavigation> {
-  String _language = 'vietnamese';
-
-  @override
-  void initState() {
-    super.initState();
-    _loadLanguage();
-  }
-
-  Future<void> _loadLanguage() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (!mounted) return;
-    setState(() {
-      _language = prefs.getString('app_language') ?? 'vietnamese';
-    });
-  }
+  int get _currentIndex => currentItem.index;
 
   String _t(String vi, String en, String zh) {
-    switch (_language) {
-      case 'english':
-        return en;
-      case 'chinese':
-        return zh;
-      default:
-        return vi;
-    }
+    return appLanguageController.text(vi, en, zh);
   }
 
-  int get _currentIndex => widget.currentItem.index;
-
-  void _onTap(int index) {
+  void _onTap(BuildContext context, int index) {
     if (index == _currentIndex) return;
     final item = AppBottomNavItem.values[index];
 
-    if (widget.onItemSelected != null) {
-      widget.onItemSelected!(item);
+    if (onItemSelected != null) {
+      onItemSelected!(item);
       return;
     }
 
@@ -74,50 +46,53 @@ class _AppBottomNavigationState extends State<AppBottomNavigation> {
   @override
   Widget build(BuildContext context) {
     final theme = appThemeController;
-    final nav = BottomNavigationBar(
-      backgroundColor: theme.surfaceColor,
-      currentIndex: _currentIndex,
-      onTap: _onTap,
-      type: BottomNavigationBarType.fixed,
-      selectedItemColor: theme.primaryColor,
-      unselectedItemColor: theme.mutedTextColor,
-      selectedLabelStyle: const TextStyle(
-        fontWeight: FontWeight.w600,
-        fontSize: 11,
-      ),
-      unselectedLabelStyle: const TextStyle(fontSize: 11),
-      items: [
-        BottomNavigationBarItem(
-          icon: const Icon(Icons.home_rounded),
-          activeIcon: const Icon(Icons.home_rounded),
-          label: _t('Trang chủ', 'Home', '首页'),
-        ),
-        BottomNavigationBarItem(
-          icon: const Icon(Icons.calendar_month_rounded),
-          activeIcon: const Icon(Icons.calendar_month_rounded),
-          label: _t('Lịch', 'Timeline', '日程'),
-        ),
-        BottomNavigationBarItem(
-          icon: const Icon(Icons.folder_rounded),
-          activeIcon: const Icon(Icons.folder_rounded),
-          label: _t('Dự án', 'Projects', '项目'),
-        ),
-        BottomNavigationBarItem(
-          icon: const Icon(Icons.chat_rounded),
-          activeIcon: const Icon(Icons.chat_rounded),
-          label: _t('Tin nhắn', 'Messages', '消息'),
-        ),
-        BottomNavigationBarItem(
-          icon: const Icon(Icons.person_rounded),
-          activeIcon: const Icon(Icons.person_rounded),
-          label: _t('Tôi', 'Me', '我的'),
-        ),
-      ],
+    final nav = AnimatedBuilder(
+      animation: appLanguageController,
+      builder: (context, _) {
+        return BottomNavigationBar(
+          backgroundColor: theme.surfaceColor,
+          currentIndex: _currentIndex,
+          onTap: (index) => _onTap(context, index),
+          type: BottomNavigationBarType.fixed,
+          selectedItemColor: theme.primaryColor,
+          unselectedItemColor: theme.mutedTextColor,
+          selectedLabelStyle: const TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 11,
+          ),
+          unselectedLabelStyle: const TextStyle(fontSize: 11),
+          items: [
+            BottomNavigationBarItem(
+              icon: const Icon(Icons.home_rounded),
+              activeIcon: const Icon(Icons.home_rounded),
+              label: _t('Trang ch\u1ee7', 'Home', '\u9996\u9875'),
+            ),
+            BottomNavigationBarItem(
+              icon: const Icon(Icons.calendar_month_rounded),
+              activeIcon: const Icon(Icons.calendar_month_rounded),
+              label: _t('L\u1ecbch', 'Timeline', '\u65e5\u7a0b'),
+            ),
+            BottomNavigationBarItem(
+              icon: const Icon(Icons.folder_rounded),
+              activeIcon: const Icon(Icons.folder_rounded),
+              label: _t('D\u1ef1 \u00e1n', 'Projects', '\u9879\u76ee'),
+            ),
+            BottomNavigationBarItem(
+              icon: const Icon(Icons.chat_rounded),
+              activeIcon: const Icon(Icons.chat_rounded),
+              label: _t('Tin nh\u1eafn', 'Messages', '\u6d88\u606f'),
+            ),
+            BottomNavigationBarItem(
+              icon: const Icon(Icons.person_rounded),
+              activeIcon: const Icon(Icons.person_rounded),
+              label: _t('T\u00f4i', 'Me', '\u6211\u7684'),
+            ),
+          ],
+        );
+      },
     );
 
-    if (!widget.rounded) {
-      return nav;
-    }
+    if (!rounded) return nav;
 
     return Container(
       decoration: BoxDecoration(

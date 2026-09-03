@@ -1,596 +1,821 @@
+﻿(() => {
+  const TOKEN_KEY = "quanlyduan_admin_token";
+  const USER_KEY = "quanlyduan_admin_user";
+  const API_BASE_URL = window.location.protocol === "file:"
+    ? "http://localhost:3000/api"
+    : `${window.location.origin}/api`;
+  const ADMIN_API_URL = `${API_BASE_URL}/admin`;
 
-      // ===== TOKEN & ADMIN SESSION =====
-      const TOKEN_KEY = "quanlyduan_admin_token";
-      const USER_KEY = "quanlyduan_admin_user";
+  const pageTitles = {
+    overview: "Tổng quan hệ thống",
+    users: "Quản lý người dùng",
+    projects: "Quản lý dự án",
+    feedbacks: "Quản lý thư góp ý",
+  };
 
-      function isAdminUser(user) {
-        const roleName = String(user?.role_name || "").trim().toLowerCase();
-        return Number(user?.system_role_id) === 1 ||
-          ["admin", "administrator", "quan tri vien", "quản trị viên"].includes(roleName);
+  const projectStatusLabels = {
+    planning: "Lên kế hoạch",
+    in_progress: "Đang thực hiện",
+    completed: "Hoàn thành",
+    paused: "Tạm dừng",
+  };
+
+  const projectStatusCodes = Object.fromEntries(
+    Object.entries(projectStatusLabels).map(([code, label]) => [label, code])
+  );
+
+  const userStatusLabels = {
+    active: "Hoạt động",
+    suspended: "Tạm khóa",
+  };
+
+  const userStatusCodes = Object.fromEntries(
+    Object.entries(userStatusLabels).map(([code, label]) => [label, code])
+  );
+
+  const state = {
+    activeSection: "overview",
+    currentAdmin: null,
+    systemRoles: [
+      { id: 1, name: "Admin" },
+      { id: 2, name: "Member" },
+    ],
+    stats: { total_projects: 0, total_users: 0, total_feedbacks: 0, pending_feedbacks: 0 },
+    users: [],
+    projects: [],
+    feedbacks: [],
+    userPage: 1,
+    usersPerPage: 20,
+    userSearch: "",
+    userPagination: null,
+    projectPage: 1,
+    projectsPerPage: 20,
+    projectSearch: "",
+    projectPagination: null,
+    feedbackPage: 1,
+    feedbacksPerPage: 20,
+    feedbackSearch: "",
+    feedbackStatusFilter: "all",
+    feedbackPagination: null,
+    selectedFeedbackId: null,
+    isLoading: false,
+  };
+
+  function isAdminUser(user) {
+    const roleName = String(user?.role_name || user?.role?.name || "").trim().toLowerCase();
+    return Number(user?.system_role_id || user?.role_id) === 1 ||
+      ["admin", "administrator", "quan tri vien", "quản trị viên"].includes(roleName);
+  }
+
+  function clearSession() {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+  }
+
+  function requireAdminSession() {
+    const token = localStorage.getItem(TOKEN_KEY);
+    const rawUser = localStorage.getItem(USER_KEY);
+    if (!token || !rawUser) {
+      window.location.replace("./login.html");
+      return null;
+    }
+
+    try {
+      const user = JSON.parse(rawUser);
+      if (!isAdminUser(user)) throw new Error("Not admin");
+      return user;
+    } catch (_) {
+      clearSession();
+      window.location.replace("./login.html");
+      return null;
+    }
+  }
+
+  const currentAdmin = requireAdminSession();
+  if (!currentAdmin) return;
+  state.currentAdmin = currentAdmin;
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function formatDate(value) {
+    if (!value) return "—";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return new Intl.DateTimeFormat("vi-VN", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(date);
+  }
+
+  function formatRelativeDate(value) {
+    if (!value) return "—";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "—";
+    const diffMinutes = Math.round((Date.now() - date.getTime()) / 60000);
+    if (diffMinutes < 1) return "Vừa xong";
+    if (diffMinutes < 60) return `${diffMinutes} phút trước`;
+    if (diffMinutes < 1440) return `${Math.floor(diffMinutes / 60)} giờ trước`;
+    if (diffMinutes < 2880) return "Hôm qua";
+    return formatDate(value);
+  }
+
+  function normalizeUserStatus(value) {
+    return userStatusCodes[value] || value || "active";
+  }
+
+  function normalizeProjectStatus(value) {
+    return projectStatusCodes[value] || value || "planning";
+  }
+
+  function renderUserRoleOptions(selectedValue = null) {
+    const select = document.getElementById("userRoleInput");
+    if (!select) return;
+    const roles = state.systemRoles.length
+      ? state.systemRoles
+      : [
+          { id: 1, name: "Admin" },
+          { id: 2, name: "Member" },
+        ];
+    select.innerHTML = roles
+      .map((role) => `<option value="${Number(role.id)}">${escapeHtml(role.name)}</option>`)
+      .join("");
+    if (selectedValue !== null && roles.some((role) => String(role.id) === String(selectedValue))) {
+      select.value = String(selectedValue);
+    }
+  }
+
+  function statusLabel(value) {
+    return projectStatusLabels[value] || value || "—";
+  }
+
+  function feedbackStatusLabel(value) {
+    return {
+      pending: "Chờ xử lý",
+      reviewing: "Đang xem xét",
+      resolved: "Đã xử lý",
+      rejected: "Từ chối",
+    }[value] || value || "—";
+  }
+
+  function attachmentLabel(type) {
+    return { image: "Ảnh", video: "Video", document: "Tài liệu" }[type] || "File";
+  }
+
+  function mapUser(user) {
+    const role = user.role || {};
+    const roleId = Number(user.role_id || role.id || user.system_role_id || 0) || null;
+    const roleName = user.role_name || role.name || (roleId === 1 ? "Admin" : "Member");
+    const status = userStatusLabels[user.status] ? user.status : normalizeUserStatus(user.status);
+    return {
+      ...user,
+      id: Number(user.id),
+      name: user.name || user.email || "Không tên",
+      email: user.email || "",
+      role_id: roleId,
+      role_name: roleName,
+      role: roleName,
+      status,
+      joinedAt: formatDate(user.created_at || user.joinedAt),
+    };
+  }
+
+  function mapProject(project) {
+    const owner = project.owner || {};
+    const ownerName = project.owner_name || owner.name || project.owner || "Chưa có trưởng nhóm";
+    const status = normalizeProjectStatus(project.status);
+    return {
+      ...project,
+      id: Number(project.id),
+      name: project.name || "Không tên",
+      description: project.description || "",
+      owner_id: Number(project.owner_id || owner.id || 0) || null,
+      owner: ownerName,
+      owner_email: project.owner_email || owner.email || "",
+      members: Number(project.members_count ?? project.members ?? 0),
+      tasks: Number(project.tasks_count ?? project.totalTasks ?? project.tasks ?? 0),
+      completed_tasks: Number(project.completed_tasks_count ?? project.completedTasks ?? 0),
+      status,
+      createdAt: formatDate(project.created_at || project.createdAt),
+    };
+  }
+
+  function mapAttachment(attachment) {
+    return {
+      ...attachment,
+      id: Number(attachment.id || 0),
+      name: attachment.file_name || attachment.name || "Tệp đính kèm",
+      url: attachment.file_url || attachment.url || "#",
+      type: attachment.file_type || attachment.type || "document",
+    };
+  }
+
+  function mapFeedback(feedback) {
+    const sender = feedback.sender || {};
+    return {
+      ...feedback,
+      id: Number(feedback.id),
+      title: feedback.title || "Không có tiêu đề",
+      content: feedback.content || feedback.content_preview || "",
+      sender: feedback.user_name || sender.name || feedback.sender || "Tài khoản đã xóa",
+      email: feedback.user_email || sender.email || feedback.email || "",
+      status: feedback.status || "pending",
+      attachments: Array.isArray(feedback.attachments) ? feedback.attachments.map(mapAttachment) : [],
+      createdAt: formatDate(feedback.created_at || feedback.createdAt),
+    };
+  }
+
+  function getToken() {
+    return localStorage.getItem(TOKEN_KEY) || "";
+  }
+
+  async function apiRequest(path, options = {}) {
+    const headers = {
+      Accept: "application/json",
+      Authorization: `Bearer ${getToken()}`,
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(options.headers || {}),
+    };
+
+    let response;
+    try {
+      response = await fetch(`${ADMIN_API_URL}${path}`, { ...options, headers });
+    } catch (_) {
+      throw new Error("Không thể kết nối máy chủ API.");
+    }
+
+    const data = await response.json().catch(() => ({}));
+    if (response.status === 401) {
+      clearSession();
+      window.location.replace("./login.html");
+      throw new Error("Phiên đăng nhập đã hết hạn.");
+    }
+    if (!response.ok || !data.success) {
+      const validationMessage = data.errors && Object.values(data.errors)[0];
+      throw new Error(validationMessage || data.message || "API xử lý thất bại.");
+    }
+    return data;
+  }
+
+  function setStat(id, value) {
+    const element = document.getElementById(id);
+    if (element) element.textContent = Number(value || 0).toLocaleString("vi-VN");
+  }
+
+  function renderStats() {
+    setStat("totalProjects", state.stats.total_projects);
+    setStat("totalUsers", state.stats.total_users);
+    setStat("totalFeedbacks", state.stats.total_feedbacks);
+    const feedbackTrend = document.querySelector(".feedback .trend");
+    if (feedbackTrend) feedbackTrend.textContent = `${state.stats.pending_feedbacks || 0} mới`;
+    const navCount = document.querySelector(".nav-item[data-section='feedbacks'] .nav-count");
+    if (navCount) navCount.textContent = String(state.stats.pending_feedbacks || 0);
+  }
+
+  function renderAdminIdentity() {
+    const chip = document.querySelector(".admin-chip");
+    if (!chip) return;
+    const name = state.currentAdmin.name || state.currentAdmin.email || "Admin";
+    const avatar = chip.querySelector(".avatar");
+    const strong = chip.querySelector("strong");
+    const roleElement = chip.querySelector(".admin-copy span") || chip.querySelector("span");
+    if (avatar) avatar.textContent = name.trim().charAt(0).toUpperCase() || "A";
+    if (strong) strong.textContent = name;
+    if (roleElement) roleElement.textContent = state.currentAdmin.role_name || "Admin";
+  }
+
+  function showToast(message, type = "error") {
+    let toast = document.getElementById("adminToast");
+    if (!toast) {
+      toast = document.createElement("div");
+      toast.id = "adminToast";
+      toast.className = "admin-toast";
+      document.body.appendChild(toast);
+    }
+    toast.textContent = message;
+    toast.dataset.type = type;
+    toast.classList.add("show");
+    window.clearTimeout(showToast.timer);
+    showToast.timer = window.setTimeout(() => toast.classList.remove("show"), 3600);
+  }
+
+  function showTableMessage(id, message) {
+    const tbody = document.getElementById(id);
+    if (tbody) tbody.innerHTML = `<tr><td class="empty-row" colspan="8">${escapeHtml(message)}</td></tr>`;
+  }
+
+  function renderOverviewActivity(items = []) {
+    const list = document.querySelector(".activity-list");
+    if (!list) return;
+    if (!items.length) {
+      list.innerHTML = `<div class="activity-item"><span class="activity-icon cyan">•</span><div><strong>Chưa có hoạt động mới</strong><p>Dữ liệu hoạt động sẽ xuất hiện khi hệ thống phát sinh thay đổi.</p></div><time>—</time></div>`;
+      return;
+    }
+    const iconByType = { project_created: ["purple", "✦"], user_created: ["green", "+"], feedback_created: ["amber", "!"] };
+    list.innerHTML = items.map((item) => {
+      const [tone, icon] = iconByType[item.type] || ["purple", "•"];
+      return `<div class="activity-item"><span class="activity-icon ${tone}">${icon}</span><div><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.description)}</p></div><time>${escapeHtml(formatRelativeDate(item.created_at))}</time></div>`;
+    }).join("");
+  }
+
+  function renderUsers() {
+    const tbody = document.getElementById("userTableBody");
+    if (!tbody) return;
+    if (!state.users.length) {
+      showTableMessage("userTableBody", "Không tìm thấy người dùng phù hợp.");
+    } else {
+      tbody.innerHTML = state.users.map((user) => `
+        <tr>
+          <td>#${user.id}</td>
+          <td><div class="user-cell"><div class="mini-avatar">${escapeHtml(user.name.charAt(0).toUpperCase())}</div><strong>${escapeHtml(user.name)}</strong></div></td>
+          <td>${escapeHtml(user.email)}</td>
+          <td><span class="role-pill">${escapeHtml(user.role)}</span></td>
+          <td>${escapeHtml(user.joinedAt)}</td>
+          <td><span class="status-pill ${user.status === "suspended" ? "status-rejected" : ""}">${escapeHtml(userStatusLabels[user.status] || user.status)}</span></td>
+          <td class="row-actions"><button type="button" data-action="edit" data-id="${user.id}">Sửa</button><button class="danger" type="button" data-action="delete" data-id="${user.id}">Xóa</button></td>
+        </tr>`).join("");
+    }
+    const total = state.userPagination?.total ?? state.users.length;
+    const current = state.userPagination?.page ?? state.userPage;
+    const pages = state.userPagination?.total_pages ?? 1;
+    document.getElementById("userResultCount").textContent = `${total} người dùng`;
+    document.getElementById("userPageInfo").textContent = `Trang ${current}/${pages}`;
+    document.getElementById("prevUserPage").disabled = !state.userPagination?.has_previous;
+    document.getElementById("nextUserPage").disabled = !state.userPagination?.has_next;
+  }
+
+  function renderProjects() {
+    const tbody = document.getElementById("projectTableBody");
+    if (!tbody) return;
+    if (!state.projects.length) {
+      showTableMessage("projectTableBody", "Không tìm thấy dự án phù hợp.");
+    } else {
+      tbody.innerHTML = state.projects.map((project) => `
+        <tr>
+          <td>#${project.id}</td>
+          <td><div class="project-cell"><strong>${escapeHtml(project.name)}</strong><span>${escapeHtml(project.description)}</span></div></td>
+          <td>${escapeHtml(project.owner)}</td>
+          <td>${project.members}</td>
+          <td>${project.tasks}</td>
+          <td><span class="status-pill">${escapeHtml(statusLabel(project.status))}</span></td>
+          <td>${escapeHtml(project.createdAt)}</td>
+          <td class="row-actions"><button type="button" data-action="view" data-id="${project.id}">Xem</button><button type="button" data-action="edit" data-id="${project.id}">Sửa</button><button class="danger" type="button" data-action="delete" data-id="${project.id}">Xóa</button></td>
+        </tr>`).join("");
+    }
+    const total = state.projectPagination?.total ?? state.projects.length;
+    const current = state.projectPagination?.page ?? state.projectPage;
+    const pages = state.projectPagination?.total_pages ?? 1;
+    document.getElementById("projectResultCount").textContent = `${total} dự án`;
+    document.getElementById("projectPageInfo").textContent = `Trang ${current}/${pages}`;
+    document.getElementById("prevProjectPage").disabled = !state.projectPagination?.has_previous;
+    document.getElementById("nextProjectPage").disabled = !state.projectPagination?.has_next;
+  }
+
+  function renderFeedbacks() {
+    const tbody = document.getElementById("feedbackTableBody");
+    if (!tbody) return;
+    if (!state.feedbacks.length) {
+      showTableMessage("feedbackTableBody", "Không tìm thấy thư góp ý phù hợp.");
+    } else {
+      tbody.innerHTML = state.feedbacks.map((feedback) => `
+        <tr>
+          <td>#${feedback.id}</td>
+          <td><div class="project-cell"><strong>${escapeHtml(feedback.title)}</strong><span>${escapeHtml(feedback.content)}</span></div></td>
+          <td><div class="project-cell"><strong>${escapeHtml(feedback.sender)}</strong><span>${escapeHtml(feedback.email)}</span></div></td>
+          <td>${feedback.attachment_count ?? feedback.attachments.length} file</td>
+          <td><span class="status-pill status-${escapeHtml(feedback.status)}">${escapeHtml(feedbackStatusLabel(feedback.status))}</span></td>
+          <td>${escapeHtml(feedback.createdAt)}</td>
+          <td class="row-actions"><button type="button" data-action="view" data-id="${feedback.id}">Xem</button><button class="danger" type="button" data-action="delete" data-id="${feedback.id}">Xóa</button></td>
+        </tr>`).join("");
+    }
+    const total = state.feedbackPagination?.total ?? state.feedbacks.length;
+    const current = state.feedbackPagination?.page ?? state.feedbackPage;
+    const pages = state.feedbackPagination?.total_pages ?? 1;
+    document.getElementById("feedbackResultCount").textContent = `${total} góp ý`;
+    document.getElementById("feedbackPageInfo").textContent = `Trang ${current}/${pages}`;
+    document.getElementById("prevFeedbackPage").disabled = !state.feedbackPagination?.has_previous;
+    document.getElementById("nextFeedbackPage").disabled = !state.feedbackPagination?.has_next;
+  }
+
+  async function loadOverview() {
+    const response = await apiRequest(`/overview?activity_limit=5`);
+    state.stats = response.data?.stats || state.stats;
+    renderStats();
+    renderOverviewActivity(response.data?.activity || []);
+  }
+
+  async function loadUsers() {
+    const query = new URLSearchParams({ page: state.userPage, limit: state.usersPerPage });
+    if (state.userSearch.trim()) query.set("q", state.userSearch.trim());
+    const response = await apiRequest(`/users?${query}`);
+    state.users = (response.data?.items || []).map(mapUser);
+    state.userPagination = response.data?.pagination || null;
+    renderUsers();
+    if (state.activeSection === "overview") renderStats();
+  }
+
+  async function loadProjects() {
+    const query = new URLSearchParams({ page: state.projectPage, limit: state.projectsPerPage });
+    if (state.projectSearch.trim()) query.set("q", state.projectSearch.trim());
+    const response = await apiRequest(`/projects?${query}`);
+    state.projects = (response.data?.items || []).map(mapProject);
+    state.projectPagination = response.data?.pagination || null;
+    renderProjects();
+  }
+
+  async function loadFeedbacks() {
+    const query = new URLSearchParams({ page: state.feedbackPage, limit: state.feedbacksPerPage });
+    if (state.feedbackSearch.trim()) query.set("q", state.feedbackSearch.trim());
+    if (state.feedbackStatusFilter !== "all") query.set("status", state.feedbackStatusFilter);
+    const response = await apiRequest(`/feedbacks?${query}`);
+    state.feedbacks = (response.data?.items || []).map(mapFeedback);
+    state.feedbackPagination = response.data?.pagination || null;
+    const counts = response.data?.status_counts || {};
+    state.stats = {
+      ...state.stats,
+      pending_feedbacks: Number(counts.pending || 0),
+      ...(state.feedbackStatusFilter === "all" && response.data?.pagination?.total !== undefined
+        ? { total_feedbacks: response.data.pagination.total }
+        : {}),
+    };
+    renderFeedbacks();
+    renderStats();
+  }
+
+  async function loadSection(section) {
+    state.isLoading = true;
+    try {
+      if (section === "overview") await loadOverview();
+      if (section === "users") await loadUsers();
+      if (section === "projects") await loadProjects();
+      if (section === "feedbacks") await loadFeedbacks();
+    } catch (error) {
+      showToast(error.message || "Không thể tải dữ liệu.");
+      if (section === "users") showTableMessage("userTableBody", error.message);
+      if (section === "projects") showTableMessage("projectTableBody", error.message);
+      if (section === "feedbacks") showTableMessage("feedbackTableBody", error.message);
+    } finally {
+      state.isLoading = false;
+    }
+  }
+
+  async function loadCatalogs() {
+    try {
+      const response = await apiRequest("/catalogs");
+      const roles = response?.data?.system_roles;
+      if (Array.isArray(roles) && roles.length) {
+        state.systemRoles = roles
+          .map((role) => ({ id: Number(role.id), name: role.name || `Role ${role.id}` }))
+          .filter((role) => Number.isInteger(role.id) && role.id > 0);
+        renderUserRoleOptions();
       }
+    } catch (error) {
+      console.warn("Cannot load admin catalogs:", error);
+    }
+  }
 
-      function requireAdminSession() {
-        const token = localStorage.getItem(TOKEN_KEY);
-        const rawUser = localStorage.getItem(USER_KEY);
-        if (!token || !rawUser) {
-          window.location.replace("./login.html");
-          return null;
-        }
+  function closeMobileSidebar() {
+    document.body.classList.remove("sidebar-open");
+    document.getElementById("mobileMenuBtn")?.setAttribute("aria-expanded", "false");
+  }
 
-        try {
-          const user = JSON.parse(rawUser);
-          if (!isAdminUser(user)) throw new Error("Not admin");
-          return user;
-        } catch (_) {
-          localStorage.removeItem(TOKEN_KEY);
-          localStorage.removeItem(USER_KEY);
-          window.location.replace("./login.html");
-          return null;
-        }
+  function switchSection(section) {
+    if (!pageTitles[section]) return;
+    state.activeSection = section;
+    document.querySelectorAll(".page-section").forEach((element) => element.classList.remove("active"));
+    document.getElementById(`${section}Section`)?.classList.add("active");
+    document.querySelectorAll(".nav-item").forEach((element) => element.classList.toggle("active", element.dataset.section === section));
+    const title = document.getElementById("pageTitle");
+    const breadcrumb = document.getElementById("breadcrumbCurrent");
+    if (title) title.textContent = pageTitles[section];
+    if (breadcrumb) breadcrumb.textContent = section === "overview" ? "Overview" : pageTitles[section].replace("Quản lý ", "");
+    closeMobileSidebar();
+    void loadSection(section);
+  }
+
+  function ensureUserPasswordField() {
+    let input = document.getElementById("userPasswordInput");
+    if (input) return input;
+    const roleInput = document.getElementById("userRoleInput");
+    if (!roleInput) return null;
+    const label = document.createElement("label");
+    label.id = "userPasswordField";
+    label.innerHTML = "Mật khẩu <input id=\"userPasswordInput\" type=\"password\" minlength=\"6\" autocomplete=\"new-password\" placeholder=\"Tối thiểu 6 ký tự\" />";
+    roleInput.closest("label")?.before(label);
+    return document.getElementById("userPasswordInput");
+  }
+
+  function openUserModal(user = null) {
+    const passwordInput = ensureUserPasswordField();
+    document.getElementById("userModalTitle").textContent = user ? "Sửa người dùng" : "Thêm người dùng";
+    document.getElementById("editingUserId").value = user?.id || "";
+    document.getElementById("userNameInput").value = user?.name || "";
+    document.getElementById("userEmailInput").value = user?.email || "";
+    renderUserRoleOptions(user?.role_id || (user?.role === "Admin" ? 1 : 2));
+    document.getElementById("userStatusInput").value = userStatusLabels[user?.status] || user?.status || "active";
+    if (passwordInput) {
+      passwordInput.value = "";
+      passwordInput.required = !user;
+      const passwordField = passwordInput.closest("label");
+      if (passwordField) passwordField.style.display = user ? "none" : "grid";
+    }
+    document.getElementById("userModal").classList.add("open");
+    document.getElementById("userModal").setAttribute("aria-hidden", "false");
+    document.getElementById("userNameInput").focus();
+  }
+
+  function closeUserModal() {
+    document.getElementById("userModal").classList.remove("open");
+    document.getElementById("userModal").setAttribute("aria-hidden", "true");
+    document.getElementById("userForm").reset();
+  }
+
+  function resolveOwnerId(value) {
+    const text = String(value || "").trim();
+    if (/^\d+$/.test(text)) return Number(text);
+    const user = state.users.find((item) => item.name.toLowerCase() === text.toLowerCase() || item.email.toLowerCase() === text.toLowerCase());
+    return user?.id || null;
+  }
+
+  function openProjectModal(project = null) {
+    document.getElementById("projectModalTitle").textContent = project ? "Sửa dự án" : "Thêm dự án";
+    document.getElementById("editingProjectId").value = project?.id || "";
+    document.getElementById("projectNameInput").value = project?.name || "";
+    document.getElementById("projectDescriptionInput").value = project?.description || "";
+    document.getElementById("projectOwnerInput").value = project?.owner_id || project?.owner || "";
+    document.getElementById("projectMembersInput").value = project?.members ?? 1;
+    document.getElementById("projectTasksInput").value = project?.tasks ?? 0;
+    const projectStatusInput = document.getElementById("projectStatusInput");
+    projectStatusInput.value = projectStatusLabels[project?.status] ? project.status : normalizeProjectStatus(project?.status);
+    document.getElementById("projectModal").classList.add("open");
+    document.getElementById("projectModal").setAttribute("aria-hidden", "false");
+    document.getElementById("projectNameInput").focus();
+  }
+
+  function closeProjectModal() {
+    document.getElementById("projectModal").classList.remove("open");
+    document.getElementById("projectModal").setAttribute("aria-hidden", "true");
+    document.getElementById("projectForm").reset();
+  }
+
+  async function openFeedbackModal(feedback) {
+    if (!feedback) return;
+    state.selectedFeedbackId = feedback.id;
+    document.getElementById("feedbackDetailTitle").textContent = feedback.title;
+    document.getElementById("feedbackDetailSender").textContent = `${feedback.sender} - ${feedback.email}`;
+    document.getElementById("feedbackDetailContent").textContent = feedback.content;
+    document.getElementById("feedbackDetailStatus").value = feedback.status;
+    renderAttachments(feedback.attachments);
+    document.getElementById("feedbackModal").classList.add("open");
+    document.getElementById("feedbackModal").setAttribute("aria-hidden", "false");
+    try {
+      const response = await apiRequest(`/feedbacks/${feedback.id}`);
+      const detail = mapFeedback(response.data);
+      document.getElementById("feedbackDetailTitle").textContent = detail.title;
+      document.getElementById("feedbackDetailSender").textContent = `${detail.sender} - ${detail.email}`;
+      document.getElementById("feedbackDetailContent").textContent = detail.content;
+      document.getElementById("feedbackDetailStatus").value = detail.status;
+      renderAttachments(detail.attachments);
+    } catch (error) {
+      showToast(error.message);
+    }
+  }
+
+  function renderAttachments(attachments = []) {
+    const list = document.getElementById("feedbackDetailAttachments");
+    if (!list) return;
+    list.innerHTML = attachments.length
+      ? attachments.map((attachment) => `<a class="attachment-chip" href="${escapeHtml(attachment.url)}" target="_blank" rel="noopener"><span>${escapeHtml(attachmentLabel(attachment.type))}</span>${escapeHtml(attachment.name)}</a>`).join("")
+      : `<span class="muted-text">Không có file đính kèm</span>`;
+  }
+
+  function closeFeedbackModal() {
+    state.selectedFeedbackId = null;
+    document.getElementById("feedbackModal").classList.remove("open");
+    document.getElementById("feedbackModal").setAttribute("aria-hidden", "true");
+  }
+
+  async function saveUser(event) {
+    event.preventDefault();
+    const editingId = Number(document.getElementById("editingUserId").value);
+    const password = document.getElementById("userPasswordInput")?.value || "";
+    const payload = {
+      name: document.getElementById("userNameInput").value.trim(),
+      email: document.getElementById("userEmailInput").value.trim(),
+      system_role_id: Number.parseInt(document.getElementById("userRoleInput").value, 10),
+      status: normalizeUserStatus(document.getElementById("userStatusInput").value),
+    };
+    if (!editingId) payload.password = password;
+    if (!payload.name || !payload.email || !Number.isInteger(payload.system_role_id) || payload.system_role_id < 1 || (!editingId && password.length < 6)) {
+      showToast("Vui lòng nhập đủ thông tin và mật khẩu tối thiểu 6 ký tự.");
+      return;
+    }
+    try {
+      if (editingId) {
+        await apiRequest(`/users/${editingId}`, { method: "PATCH", body: JSON.stringify(payload) });
+      } else {
+        await apiRequest("/users", { method: "POST", body: JSON.stringify(payload) });
       }
+      closeUserModal();
+      showToast(editingId ? "Đã cập nhật người dùng." : "Đã tạo người dùng.", "success");
+      await Promise.all([loadUsers(), loadOverview()]);
+    } catch (error) {
+      showToast(error.message);
+    }
+  }
 
-      const currentAdmin = requireAdminSession();
-
-      // ===== STATE =====
-      const pageTitles = {
-        overview: "Tổng quan hệ thống",
-        users: "Quản lý người dùng",
-        projects: "Quản lý dự án",
-        feedbacks: "Quản lý thư góp ý",
-      };
-
-      const state = {
-        activeSection: "overview",
-        userPage: 1,
-        usersPerPage: 20,
-        userSearch: "",
-        projectPage: 1,
-        projectsPerPage: 20,
-        projectSearch: "",
-        feedbackPage: 1,
-        feedbacksPerPage: 20,
-        feedbackSearch: "",
-        feedbackStatusFilter: "all",
-        selectedFeedbackId: null,
-        users: [
-          { id: 1, name: "Quản trị viên", email: "admin@company.com", role: "Admin", joinedAt: "08/07/2026", status: "Hoạt động" },
-          { id: 2, name: "Nguyễn Văn An", email: "manager@company.com", role: "Member", joinedAt: "08/07/2026", status: "Hoạt động" },
-          { id: 6, name: "Phạm Hồng Quý", email: "hongquy@gmail.com", role: "Member", joinedAt: "08/07/2026", status: "Hoạt động" },
-          { id: 7, name: "Nguyễn Văn Kha", email: "kha2000@gmail.com", role: "Member", joinedAt: "17/07/2026", status: "Hoạt động" },
-          { id: 8, name: "Trần Thị B", email: "test@gmail.com", role: "Member", joinedAt: "27/07/2026", status: "Hoạt động" },
-          { id: 9, name: "Lê Văn C", email: "testq@gmail.com", role: "Member", joinedAt: "29/07/2026", status: "Hoạt động" },
-          { id: 10, name: "Phạm Thị D", email: "q@gmail.com", role: "Member", joinedAt: "29/07/2026", status: "Hoạt động" },
-        ],
-        projects: [
-          { id: 8, name: "Ứng dụng quản lý kho", description: "Quản lý nhập xuất tồn kho", owner: "Trần Thị B", members: 4, tasks: 12, status: "Đang thực hiện", createdAt: "29/07/2026" },
-          { id: 12, name: "Website bán hàng", description: "Website quản lý bán hàng", owner: "Phạm Thị D", members: 3, tasks: 8, status: "Lên kế hoạch", createdAt: "29/07/2026" },
-          { id: 16, name: "Lập trình di động", description: "Ứng dụng quản lý dự án mobile", owner: "Phạm Hồng Quý", members: 3, tasks: 5, status: "Đang thực hiện", createdAt: "31/07/2026" },
-          { id: 17, name: "Sinh nhật Thu", description: "Chuẩn bị sinh nhật", owner: "Phạm Hồng Quý", members: 1, tasks: 3, status: "Đang thực hiện", createdAt: "03/08/2026" },
-        ],
-        feedbacks: [
-          {
-            id: 1,
-            title: "Lỗi theme tối trang lịch",
-            content: "Khi chuyển sang chế độ tối, một vài khung trong trang lịch vẫn còn nền sáng.",
-            sender: "Phạm Hồng Quý",
-            email: "hongquy@gmail.com",
-            status: "pending",
-            createdAt: "06/08/2026",
-            attachments: [{ name: "timeline_dark.png", type: "image", url: "#" }],
-          },
-          {
-            id: 2,
-            title: "Góp ý trang tạo nhiệm vụ",
-            content: "Nên cho phép chọn nhiều thành viên nhanh hơn và hiển thị rõ người nhận task.",
-            sender: "Trần Thị B",
-            email: "test@gmail.com",
-            status: "reviewing",
-            createdAt: "05/08/2026",
-            attachments: [
-              { name: "demo.mp4", type: "video", url: "#" },
-              { name: "note.pdf", type: "document", url: "#" },
-            ],
-          },
-          {
-            id: 3,
-            title: "Cải thiện thông báo",
-            content: "Thông báo nên tự đánh dấu đã đọc khi người dùng nhấn vào.",
-            sender: "Lê Văn C",
-            email: "testq@gmail.com",
-            status: "resolved",
-            createdAt: "04/08/2026",
-            attachments: [],
-          },
-        ],
-      };
-
-      const fallbackStats = {
-        totalProjects: state.projects.length,
-        totalUsers: state.users.length,
-        totalFeedbacks: state.feedbacks.length,
-      };
-
-      // ===== HELPERS =====
-      function setStat(id, value) {
-        const el = document.getElementById(id);
-        if (el) el.textContent = Number(value || 0).toLocaleString("vi-VN");
+  async function saveProject(event) {
+    event.preventDefault();
+    const editingId = Number(document.getElementById("editingProjectId").value);
+    const ownerId = resolveOwnerId(document.getElementById("projectOwnerInput").value);
+    const payload = {
+      name: document.getElementById("projectNameInput").value.trim(),
+      description: document.getElementById("projectDescriptionInput").value.trim(),
+      owner_id: ownerId,
+      status: normalizeProjectStatus(document.getElementById("projectStatusInput").value),
+    };
+    if (!payload.name || !payload.owner_id) {
+      showToast("Tên dự án hợp lệ và owner_id là bắt buộc. Có thể nhập ID hoặc tên/email người dùng.");
+      return;
+    }
+    try {
+      if (editingId) {
+        await apiRequest(`/projects/${editingId}`, { method: "PATCH", body: JSON.stringify(payload) });
+      } else {
+        await apiRequest("/projects", { method: "POST", body: JSON.stringify(payload) });
       }
+      closeProjectModal();
+      showToast(editingId ? "Đã cập nhật dự án." : "Đã tạo dự án.", "success");
+      await Promise.all([loadProjects(), loadOverview()]);
+    } catch (error) {
+      showToast(error.message);
+    }
+  }
 
-      function renderStats(stats = fallbackStats) {
-        setStat("totalProjects", state.projects.length || stats.totalProjects);
-        setStat("totalUsers", state.users.length || stats.totalUsers);
-        setStat("totalFeedbacks", state.feedbacks.length || stats.totalFeedbacks);
-      }
+  async function deleteUser(id) {
+    const user = state.users.find((item) => item.id === id);
+    if (!user || !window.confirm(`Xóa người dùng "${user.name}"?`)) return;
+    try {
+      await apiRequest(`/users/${id}?confirm=${id}`, { method: "DELETE" });
+      showToast("Đã xóa người dùng.", "success");
+      await Promise.all([loadUsers(), loadOverview()]);
+    } catch (error) {
+      showToast(error.message);
+    }
+  }
 
-      function renderAdminIdentity() {
-        if (!currentAdmin) return;
-        const chip = document.querySelector(".admin-chip");
-        if (!chip) return;
-        const name = currentAdmin.name || currentAdmin.email || "Admin";
-        const letter = name.trim().charAt(0).toUpperCase() || "A";
-        const avatar = chip.querySelector(".avatar");
-        const strong = chip.querySelector("strong");
-        const span = chip.querySelector("span");
-        if (avatar) avatar.textContent = letter;
-        if (strong) strong.textContent = name;
-        if (span) span.textContent = currentAdmin.role_name || "Admin";
-      }
+  async function deleteProject(id) {
+    const project = state.projects.find((item) => item.id === id);
+    if (!project || !window.confirm(`Xóa dự án "${project.name}"? Dữ liệu liên quan có thể bị xóa theo.`)) return;
+    try {
+      await apiRequest(`/projects/${id}?confirm=${id}`, { method: "DELETE" });
+      showToast("Đã xóa dự án.", "success");
+      await Promise.all([loadProjects(), loadOverview()]);
+    } catch (error) {
+      showToast(error.message);
+    }
+  }
 
-      function logoutAdmin() {
-        localStorage.removeItem(TOKEN_KEY);
-        localStorage.removeItem(USER_KEY);
-        window.location.replace("./login.html");
-      }
+  async function saveFeedbackStatus() {
+    if (!state.selectedFeedbackId) return;
+    const status = document.getElementById("feedbackDetailStatus").value;
+    try {
+      await apiRequest(`/feedbacks/${state.selectedFeedbackId}/status`, { method: "PATCH", body: JSON.stringify({ status }) });
+      closeFeedbackModal();
+      showToast("Đã cập nhật trạng thái góp ý.", "success");
+      await Promise.all([loadFeedbacks(), loadOverview()]);
+    } catch (error) {
+      showToast(error.message);
+    }
+  }
 
-      function switchSection(section) {
-        state.activeSection = section;
-        document.querySelectorAll(".page-section").forEach((el) => el.classList.remove("active"));
-        document.getElementById(`${section}Section`)?.classList.add("active");
+  async function deleteFeedback(id) {
+    const feedback = state.feedbacks.find((item) => item.id === id);
+    if (!feedback || !window.confirm(`Xóa thư góp ý "${feedback.title}"?`)) return;
+    try {
+      await apiRequest(`/feedbacks/${id}`, { method: "DELETE" });
+      showToast("Đã xóa thư góp ý.", "success");
+      await Promise.all([loadFeedbacks(), loadOverview()]);
+    } catch (error) {
+      showToast(error.message);
+    }
+  }
 
-        document.querySelectorAll(".nav-item").forEach((el) => {
-          el.classList.toggle("active", el.dataset.section === section);
-        });
+  function bindEvents() {
+    document.querySelectorAll("[data-section]").forEach((element) => {
+      element.addEventListener("click", (event) => {
+        event.preventDefault();
+        switchSection(element.dataset.section);
+      });
+    });
 
-        document.getElementById("pageTitle").textContent = pageTitles[section];
-        const breadcrumb = document.getElementById("breadcrumbCurrent");
-        if (breadcrumb) {
-          breadcrumb.textContent = section === "overview" ? "Overview" : pageTitles[section].replace("Quản lý ", "");
-        }
+    document.getElementById("userSearch")?.addEventListener("input", (event) => {
+      state.userSearch = event.target.value;
+      state.userPage = 1;
+      void loadUsers();
+    });
+    document.getElementById("projectSearch")?.addEventListener("input", (event) => {
+      state.projectSearch = event.target.value;
+      state.projectPage = 1;
+      void loadProjects();
+    });
+    document.getElementById("feedbackSearch")?.addEventListener("input", (event) => {
+      state.feedbackSearch = event.target.value;
+      state.feedbackPage = 1;
+      void loadFeedbacks();
+    });
+    document.getElementById("feedbackStatusFilter")?.addEventListener("change", (event) => {
+      state.feedbackStatusFilter = event.target.value;
+      state.feedbackPage = 1;
+      void loadFeedbacks();
+    });
+
+    document.getElementById("prevUserPage")?.addEventListener("click", () => { state.userPage = Math.max(1, state.userPage - 1); void loadUsers(); });
+    document.getElementById("nextUserPage")?.addEventListener("click", () => { state.userPage += 1; void loadUsers(); });
+    document.getElementById("prevProjectPage")?.addEventListener("click", () => { state.projectPage = Math.max(1, state.projectPage - 1); void loadProjects(); });
+    document.getElementById("nextProjectPage")?.addEventListener("click", () => { state.projectPage += 1; void loadProjects(); });
+    document.getElementById("prevFeedbackPage")?.addEventListener("click", () => { state.feedbackPage = Math.max(1, state.feedbackPage - 1); void loadFeedbacks(); });
+    document.getElementById("nextFeedbackPage")?.addEventListener("click", () => { state.feedbackPage += 1; void loadFeedbacks(); });
+
+    document.getElementById("addUserBtn")?.addEventListener("click", () => openUserModal());
+    document.getElementById("addProjectBtn")?.addEventListener("click", () => openProjectModal());
+    document.getElementById("closeUserModal")?.addEventListener("click", closeUserModal);
+    document.getElementById("cancelUserForm")?.addEventListener("click", closeUserModal);
+    document.getElementById("userForm")?.addEventListener("submit", saveUser);
+    document.getElementById("closeProjectModal")?.addEventListener("click", closeProjectModal);
+    document.getElementById("cancelProjectForm")?.addEventListener("click", closeProjectModal);
+    document.getElementById("projectForm")?.addEventListener("submit", saveProject);
+    document.getElementById("closeFeedbackModal")?.addEventListener("click", closeFeedbackModal);
+    document.getElementById("cancelFeedbackModal")?.addEventListener("click", closeFeedbackModal);
+    document.getElementById("saveFeedbackStatusBtn")?.addEventListener("click", saveFeedbackStatus);
+
+    ["userModal", "projectModal", "feedbackModal"].forEach((id) => {
+      document.getElementById(id)?.addEventListener("click", (event) => {
+        if (event.target.id === id) ({ userModal: closeUserModal, projectModal: closeProjectModal, feedbackModal: closeFeedbackModal }[id])();
+      });
+    });
+
+    document.getElementById("userTableBody")?.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-action]");
+      if (!button) return;
+      const id = Number(button.dataset.id);
+      if (button.dataset.action === "edit") openUserModal(state.users.find((item) => item.id === id));
+      if (button.dataset.action === "delete") void deleteUser(id);
+    });
+    document.getElementById("projectTableBody")?.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-action]");
+      if (!button) return;
+      const id = Number(button.dataset.id);
+      if (button.dataset.action === "view") window.location.href = `./project-detail.html?id=${id}`;
+      if (button.dataset.action === "edit") openProjectModal(state.projects.find((item) => item.id === id));
+      if (button.dataset.action === "delete") void deleteProject(id);
+    });
+    document.getElementById("feedbackTableBody")?.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-action]");
+      if (!button) return;
+      const id = Number(button.dataset.id);
+      if (button.dataset.action === "view") void openFeedbackModal(state.feedbacks.find((item) => item.id === id));
+      if (button.dataset.action === "delete") void deleteFeedback(id);
+    });
+
+    document.querySelector(".logout-btn")?.addEventListener("click", () => {
+      clearSession();
+      window.location.replace("./login.html");
+    });
+    document.getElementById("mobileMenuBtn")?.addEventListener("click", () => {
+      const isOpen = document.body.classList.toggle("sidebar-open");
+      document.getElementById("mobileMenuBtn")?.setAttribute("aria-expanded", String(isOpen));
+    });
+    document.getElementById("sidebarOverlay")?.addEventListener("click", closeMobileSidebar);
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
         closeMobileSidebar();
-      }
-
-      function filteredUsers() {
-        const q = state.userSearch.trim().toLowerCase();
-        if (!q) return [...state.users];
-        return state.users.filter((u) =>
-          u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
-        );
-      }
-
-      function filteredProjects() {
-        const q = state.projectSearch.trim().toLowerCase();
-        if (!q) return [...state.projects];
-        return state.projects.filter((p) =>
-          p.name.toLowerCase().includes(q) ||
-          p.owner.toLowerCase().includes(q) ||
-          p.description.toLowerCase().includes(q)
-        );
-      }
-
-      function statusLabel(s) {
-        const map = {
-          pending: "Chờ xử lý",
-          reviewing: "Đang xem xét",
-          resolved: "Đã xử lý",
-          rejected: "Từ chối",
-        };
-        return map[s] || s;
-      }
-
-      function attachmentLabel(type) {
-        const map = { image: "Ảnh", video: "Video", document: "Tài liệu" };
-        return map[type] || "File";
-      }
-
-      function filteredFeedbacks() {
-        const q = state.feedbackSearch.trim().toLowerCase();
-        return state.feedbacks.filter((f) => {
-          const matchSearch = !q ||
-            f.title.toLowerCase().includes(q) ||
-            f.content.toLowerCase().includes(q) ||
-            f.sender.toLowerCase().includes(q) ||
-            f.email.toLowerCase().includes(q);
-          const matchStatus = state.feedbackStatusFilter === "all" || f.status === state.feedbackStatusFilter;
-          return matchSearch && matchStatus;
-        });
-      }
-
-      // ===== RENDER FUNCTIONS =====
-      function renderUsers() {
-        const users = filteredUsers();
-        const totalPages = Math.max(1, Math.ceil(users.length / state.usersPerPage));
-        state.userPage = Math.min(state.userPage, totalPages);
-        const start = (state.userPage - 1) * state.usersPerPage;
-        const pageUsers = users.slice(start, start + state.usersPerPage);
-        const tbody = document.getElementById("userTableBody");
-
-        tbody.innerHTML = pageUsers.map((u) => `
-          <tr>
-            <td>#${u.id}</td>
-            <td>
-              <div class="user-cell">
-                <div class="mini-avatar">${u.name.charAt(0).toUpperCase()}</div>
-                <strong>${u.name}</strong>
-              </div>
-            </td>
-            <td>${u.email}</td>
-            <td><span class="role-pill">${u.role}</span></td>
-            <td>${u.joinedAt}</td>
-            <td><span class="status-pill">${u.status}</span></td>
-            <td class="row-actions">
-              <button type="button" data-action="edit" data-id="${u.id}">Sửa</button>
-              <button class="danger" type="button" data-action="delete" data-id="${u.id}">Xóa</button>
-            </td>
-          </tr>
-        `).join("");
-
-        if (!pageUsers.length) {
-          tbody.innerHTML = `<tr><td class="empty-row" colspan="7">Không tìm thấy người dùng phù hợp.</td></tr>`;
-        }
-
-        document.getElementById("userResultCount").textContent = `${users.length} người dùng`;
-        document.getElementById("userPageInfo").textContent = `Trang ${state.userPage}/${totalPages}`;
-        document.getElementById("prevUserPage").disabled = state.userPage <= 1;
-        document.getElementById("nextUserPage").disabled = state.userPage >= totalPages;
-        renderStats();
-      }
-
-      function renderProjects() {
-        const projects = filteredProjects();
-        const totalPages = Math.max(1, Math.ceil(projects.length / state.projectsPerPage));
-        state.projectPage = Math.min(state.projectPage, totalPages);
-        const start = (state.projectPage - 1) * state.projectsPerPage;
-        const pageProjects = projects.slice(start, start + state.projectsPerPage);
-        const tbody = document.getElementById("projectTableBody");
-
-        tbody.innerHTML = pageProjects.map((p) => `
-          <tr>
-            <td>#${p.id}</td>
-            <td>
-              <div class="project-cell">
-                <strong>${p.name}</strong>
-                <span>${p.description}</span>
-              </div>
-            </td>
-            <td>${p.owner}</td>
-            <td>${p.members}</td>
-            <td>${p.tasks}</td>
-            <td><span class="status-pill">${p.status}</span></td>
-            <td>${p.createdAt}</td>
-            <td class="row-actions">
-              <button type="button" data-action="edit" data-id="${p.id}">Sửa</button>
-              <button class="danger" type="button" data-action="delete" data-id="${p.id}">Xóa</button>
-            </td>
-          </tr>
-        `).join("");
-
-        if (!pageProjects.length) {
-          tbody.innerHTML = `<tr><td class="empty-row" colspan="8">Không tìm thấy dự án phù hợp.</td></tr>`;
-        }
-
-        document.getElementById("projectResultCount").textContent = `${projects.length} dự án`;
-        document.getElementById("projectPageInfo").textContent = `Trang ${state.projectPage}/${totalPages}`;
-        document.getElementById("prevProjectPage").disabled = state.projectPage <= 1;
-        document.getElementById("nextProjectPage").disabled = state.projectPage >= totalPages;
-        renderStats();
-      }
-
-      function renderFeedbacks() {
-        const feedbacks = filteredFeedbacks();
-        const totalPages = Math.max(1, Math.ceil(feedbacks.length / state.feedbacksPerPage));
-        state.feedbackPage = Math.min(state.feedbackPage, totalPages);
-        const start = (state.feedbackPage - 1) * state.feedbacksPerPage;
-        const pageFeedbacks = feedbacks.slice(start, start + state.feedbacksPerPage);
-        const tbody = document.getElementById("feedbackTableBody");
-
-        tbody.innerHTML = pageFeedbacks.map((f) => `
-          <tr>
-            <td>#${f.id}</td>
-            <td>
-              <div class="project-cell">
-                <strong>${f.title}</strong>
-                <span>${f.content}</span>
-              </div>
-            </td>
-            <td>
-              <div class="project-cell">
-                <strong>${f.sender}</strong>
-                <span>${f.email}</span>
-              </div>
-            </td>
-            <td>${f.attachments.length} file</td>
-            <td><span class="status-pill status-${f.status}">${statusLabel(f.status)}</span></td>
-            <td>${f.createdAt}</td>
-            <td class="row-actions">
-              <button type="button" data-action="view" data-id="${f.id}">Xem</button>
-              <button class="danger" type="button" data-action="delete" data-id="${f.id}">Xóa</button>
-            </td>
-          </tr>
-        `).join("");
-
-        if (!pageFeedbacks.length) {
-          tbody.innerHTML = `<tr><td class="empty-row" colspan="7">Không tìm thấy thư góp ý phù hợp.</td></tr>`;
-        }
-
-        document.getElementById("feedbackResultCount").textContent = `${feedbacks.length} góp ý`;
-        document.getElementById("feedbackPageInfo").textContent = `Trang ${state.feedbackPage}/${totalPages}`;
-        document.getElementById("prevFeedbackPage").disabled = state.feedbackPage <= 1;
-        document.getElementById("nextFeedbackPage").disabled = state.feedbackPage >= totalPages;
-        renderStats();
-      }
-
-      // ===== MODAL CONTROLS =====
-      function openUserModal(user = null) {
-        document.getElementById("userModalTitle").textContent = user ? "Sửa người dùng" : "Thêm người dùng";
-        document.getElementById("editingUserId").value = user?.id || "";
-        document.getElementById("userNameInput").value = user?.name || "";
-        document.getElementById("userEmailInput").value = user?.email || "";
-        document.getElementById("userRoleInput").value = user?.role || "Member";
-        document.getElementById("userStatusInput").value = user?.status || "Hoạt động";
-        document.getElementById("userModal").classList.add("open");
-        document.getElementById("userModal").setAttribute("aria-hidden", "false");
-      }
-
-      function closeUserModal() {
-        document.getElementById("userModal").classList.remove("open");
-        document.getElementById("userModal").setAttribute("aria-hidden", "true");
-        document.getElementById("userForm").reset();
-      }
-
-      function openProjectModal(project = null) {
-        document.getElementById("projectModalTitle").textContent = project ? "Sửa dự án" : "Thêm dự án";
-        document.getElementById("editingProjectId").value = project?.id || "";
-        document.getElementById("projectNameInput").value = project?.name || "";
-        document.getElementById("projectDescriptionInput").value = project?.description || "";
-        document.getElementById("projectOwnerInput").value = project?.owner || "";
-        document.getElementById("projectMembersInput").value = project?.members ?? 1;
-        document.getElementById("projectTasksInput").value = project?.tasks ?? 0;
-        document.getElementById("projectStatusInput").value = project?.status || "Đang thực hiện";
-        document.getElementById("projectModal").classList.add("open");
-        document.getElementById("projectModal").setAttribute("aria-hidden", "false");
-      }
-
-      function closeProjectModal() {
-        document.getElementById("projectModal").classList.remove("open");
-        document.getElementById("projectModal").setAttribute("aria-hidden", "true");
-        document.getElementById("projectForm").reset();
-      }
-
-      function openFeedbackModal(feedback) {
-        if (!feedback) return;
-        state.selectedFeedbackId = feedback.id;
-        document.getElementById("feedbackDetailTitle").textContent = feedback.title;
-        document.getElementById("feedbackDetailSender").textContent = `${feedback.sender} - ${feedback.email}`;
-        document.getElementById("feedbackDetailContent").textContent = feedback.content;
-        document.getElementById("feedbackDetailStatus").value = feedback.status;
-
-        const list = document.getElementById("feedbackDetailAttachments");
-        list.innerHTML = feedback.attachments.length
-          ? feedback.attachments.map((a) => `
-              <a class="attachment-chip" href="${a.url}">
-                <span>${attachmentLabel(a.type)}</span>
-                ${a.name}
-              </a>
-            `).join("")
-          : `<span class="muted-text">Không có file đính kèm</span>`;
-
-        document.getElementById("feedbackModal").classList.add("open");
-        document.getElementById("feedbackModal").setAttribute("aria-hidden", "false");
-      }
-
-      function closeFeedbackModal() {
-        state.selectedFeedbackId = null;
-        document.getElementById("feedbackModal").classList.remove("open");
-        document.getElementById("feedbackModal").setAttribute("aria-hidden", "true");
-      }
-
-      // ===== CRUD =====
-      function saveUser(e) {
-        e.preventDefault();
-        const editingId = Number(document.getElementById("editingUserId").value);
-        const payload = {
-          name: document.getElementById("userNameInput").value.trim(),
-          email: document.getElementById("userEmailInput").value.trim(),
-          role: document.getElementById("userRoleInput").value,
-          status: document.getElementById("userStatusInput").value,
-        };
-
-        if (editingId) {
-          state.users = state.users.map((u) => u.id === editingId ? { ...u, ...payload } : u);
-        } else {
-          const nextId = Math.max(0, ...state.users.map((u) => u.id)) + 1;
-          state.users.unshift({ id: nextId, ...payload, joinedAt: new Date().toLocaleDateString("vi-VN") });
-          state.userPage = 1;
-        }
         closeUserModal();
-        renderUsers();
-      }
-
-      function saveProject(e) {
-        e.preventDefault();
-        const editingId = Number(document.getElementById("editingProjectId").value);
-        const payload = {
-          name: document.getElementById("projectNameInput").value.trim(),
-          description: document.getElementById("projectDescriptionInput").value.trim(),
-          owner: document.getElementById("projectOwnerInput").value.trim(),
-          members: Number(document.getElementById("projectMembersInput").value || 0),
-          tasks: Number(document.getElementById("projectTasksInput").value || 0),
-          status: document.getElementById("projectStatusInput").value,
-        };
-
-        if (editingId) {
-          state.projects = state.projects.map((p) => p.id === editingId ? { ...p, ...payload } : p);
-        } else {
-          const nextId = Math.max(0, ...state.projects.map((p) => p.id)) + 1;
-          state.projects.unshift({ id: nextId, ...payload, createdAt: new Date().toLocaleDateString("vi-VN") });
-          state.projectPage = 1;
-        }
         closeProjectModal();
-        renderProjects();
-      }
-
-      function deleteUser(id) {
-        const user = state.users.find((u) => u.id === id);
-        if (!user || !window.confirm(`Xóa người dùng "${user.name}"?`)) return;
-        state.users = state.users.filter((u) => u.id !== id);
-        renderUsers();
-      }
-
-      function deleteProject(id) {
-        const project = state.projects.find((p) => p.id === id);
-        if (!project || !window.confirm(`Xóa dự án "${project.name}"?`)) return;
-        state.projects = state.projects.filter((p) => p.id !== id);
-        renderProjects();
-      }
-
-      function saveFeedbackStatus() {
-        const status = document.getElementById("feedbackDetailStatus").value;
-        state.feedbacks = state.feedbacks.map((f) =>
-          f.id === state.selectedFeedbackId ? { ...f, status } : f
-        );
         closeFeedbackModal();
-        renderFeedbacks();
       }
+    });
+  }
 
-      function deleteFeedback(id) {
-        const feedback = state.feedbacks.find((f) => f.id === id);
-        if (!feedback || !window.confirm(`Xóa thư góp ý "${feedback.title}"?`)) return;
-        state.feedbacks = state.feedbacks.filter((f) => f.id !== id);
-        renderFeedbacks();
-      }
+  function injectApiToastStyles() {
+    const style = document.createElement("style");
+    style.textContent = `.admin-toast{position:fixed;right:24px;bottom:24px;z-index:10000;max-width:min(380px,calc(100vw - 48px));padding:13px 16px;color:#dffaff;border:1px solid rgba(101,220,255,.28);border-radius:11px;background:rgba(14,27,46,.96);box-shadow:0 16px 38px rgba(0,0,0,.35);font:600 12px/1.45 \"DM Sans\",sans-serif;opacity:0;pointer-events:none;transform:translateY(10px);transition:opacity .2s ease,transform .2s ease}.admin-toast.show{opacity:1;transform:translateY(0)}.admin-toast[data-type=success]{border-color:rgba(102,225,173,.32);color:#c9ffe8}.admin-toast[data-type=error]{border-color:rgba(255,129,153,.32);color:#ffd5de}`;
+    document.head.appendChild(style);
+  }
 
-      function closeMobileSidebar() {
-        document.body.classList.remove("sidebar-open");
-        document.getElementById("mobileMenuBtn")?.setAttribute("aria-expanded", "false");
-      }
+  injectApiToastStyles();
+  renderAdminIdentity();
+  renderStats();
+  bindEvents();
+  renderUserRoleOptions();
+  void loadCatalogs();
+  switchSection(window.location.hash.replace("#", "") || "overview");
+})();
 
-      function toggleMobileSidebar() {
-        const isOpen = document.body.classList.toggle("sidebar-open");
-        document.getElementById("mobileMenuBtn")?.setAttribute("aria-expanded", String(isOpen));
-      }
-
-      // ===== EVENT LISTENERS =====
-      // Navigation
-      document.querySelectorAll("[data-section]").forEach((el) => {
-        el.addEventListener("click", (e) => {
-          e.preventDefault();
-          switchSection(el.dataset.section);
-        });
-      });
-
-      // Search & Filter
-      document.getElementById("userSearch").addEventListener("input", (e) => {
-        state.userSearch = e.target.value;
-        state.userPage = 1;
-        renderUsers();
-      });
-      document.getElementById("projectSearch").addEventListener("input", (e) => {
-        state.projectSearch = e.target.value;
-        state.projectPage = 1;
-        renderProjects();
-      });
-      document.getElementById("feedbackSearch").addEventListener("input", (e) => {
-        state.feedbackSearch = e.target.value;
-        state.feedbackPage = 1;
-        renderFeedbacks();
-      });
-      document.getElementById("feedbackStatusFilter").addEventListener("change", (e) => {
-        state.feedbackStatusFilter = e.target.value;
-        state.feedbackPage = 1;
-        renderFeedbacks();
-      });
-
-      // Pagination
-      document.getElementById("prevUserPage").addEventListener("click", () => { state.userPage--; renderUsers(); });
-      document.getElementById("nextUserPage").addEventListener("click", () => { state.userPage++; renderUsers(); });
-      document.getElementById("prevProjectPage").addEventListener("click", () => { state.projectPage--; renderProjects(); });
-      document.getElementById("nextProjectPage").addEventListener("click", () => { state.projectPage++; renderProjects(); });
-      document.getElementById("prevFeedbackPage").addEventListener("click", () => { state.feedbackPage--; renderFeedbacks(); });
-      document.getElementById("nextFeedbackPage").addEventListener("click", () => { state.feedbackPage++; renderFeedbacks(); });
-
-      // Add buttons
-      document.getElementById("addUserBtn").addEventListener("click", () => openUserModal());
-      document.getElementById("addProjectBtn").addEventListener("click", () => openProjectModal());
-
-      // Close modals
-      document.getElementById("closeUserModal").addEventListener("click", closeUserModal);
-      document.getElementById("cancelUserForm").addEventListener("click", closeUserModal);
-      document.getElementById("userForm").addEventListener("submit", saveUser);
-
-      document.getElementById("closeProjectModal").addEventListener("click", closeProjectModal);
-      document.getElementById("cancelProjectForm").addEventListener("click", closeProjectModal);
-      document.getElementById("projectForm").addEventListener("submit", saveProject);
-
-      document.getElementById("closeFeedbackModal").addEventListener("click", closeFeedbackModal);
-      document.getElementById("cancelFeedbackModal").addEventListener("click", closeFeedbackModal);
-      document.getElementById("saveFeedbackStatusBtn").addEventListener("click", saveFeedbackStatus);
-
-      // Backdrop close
-      document.getElementById("userModal").addEventListener("click", (e) => {
-        if (e.target.id === "userModal") closeUserModal();
-      });
-      document.getElementById("projectModal").addEventListener("click", (e) => {
-        if (e.target.id === "projectModal") closeProjectModal();
-      });
-      document.getElementById("feedbackModal").addEventListener("click", (e) => {
-        if (e.target.id === "feedbackModal") closeFeedbackModal();
-      });
-
-      // Row actions
-      document.getElementById("userTableBody").addEventListener("click", (e) => {
-        const btn = e.target.closest("button[data-action]");
-        if (!btn) return;
-        const id = Number(btn.dataset.id);
-        if (btn.dataset.action === "edit") openUserModal(state.users.find((u) => u.id === id));
-        if (btn.dataset.action === "delete") deleteUser(id);
-      });
-
-      document.getElementById("projectTableBody").addEventListener("click", (e) => {
-        const btn = e.target.closest("button[data-action]");
-        if (!btn) return;
-        const id = Number(btn.dataset.id);
-        if (btn.dataset.action === "edit") openProjectModal(state.projects.find((p) => p.id === id));
-        if (btn.dataset.action === "delete") deleteProject(id);
-      });
-
-      document.getElementById("feedbackTableBody").addEventListener("click", (e) => {
-        const btn = e.target.closest("button[data-action]");
-        if (!btn) return;
-        const id = Number(btn.dataset.id);
-        if (btn.dataset.action === "view") {
-          openFeedbackModal(state.feedbacks.find((f) => f.id === id));
-        }
-        if (btn.dataset.action === "delete") deleteFeedback(id);
-      });
-
-      // Logout
-      document.querySelector(".logout-btn").addEventListener("click", logoutAdmin);
-
-      // Responsive navigation
-      document.getElementById("mobileMenuBtn")?.addEventListener("click", toggleMobileSidebar);
-      document.getElementById("sidebarOverlay")?.addEventListener("click", closeMobileSidebar);
-      document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape") {
-          closeMobileSidebar();
-          closeUserModal();
-          closeProjectModal();
-          closeFeedbackModal();
-        }
-      });
-
-      // ===== INIT =====
-      renderAdminIdentity();
-      renderStats();
-      renderUsers();
-      renderProjects();
-      renderFeedbacks();

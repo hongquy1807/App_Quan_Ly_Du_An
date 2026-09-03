@@ -1,5 +1,9 @@
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '.env') }); // Load biến môi trường từ file .env
+try {
+    require('dotenv').config({ path: path.join(__dirname, '.env') }); // Load biến môi trường từ file .env nếu package có sẵn
+} catch (_) {
+    // dotenv là tùy chọn; production có thể truyền biến môi trường trực tiếp.
+}
 const express = require('express');
 const mysql = require('mysql2/promise'); // Sử dụng thư viện mysql2 với hỗ trợ Promise (async/await)
 const cors = require('cors');
@@ -46,13 +50,19 @@ const checkAuthAPI = (req, res, next) => {
 // 4. CÁC API KHỞI TẠO BAN ĐẦU
 // ==========================================
 
-// API trang chủ (Kiểm tra xem server nodejs có đang sống không)
-app.get('/', (req, res) => {
-    res.json({
-        app: "Quản Lý Dự Án",
-        version: "1.0.0",
-        database_type: "MySQL",
-        message: "API Server Node.js đang hoạt động ổn định! 🚀"
+// Mở giao diện đăng nhập Admin khi truy cập http://localhost:3000/
+app.get('/', (_req, res) => {
+    return res.redirect('/admin/login.html');
+});
+
+// Endpoint kiểm tra server/API, dùng http://localhost:3000/health
+app.get('/health', (_req, res) => {
+    return res.json({
+        success: true,
+        app: 'Quản Lý Dự Án',
+        version: '1.0.0',
+        database_type: 'MySQL',
+        message: 'API Server Node.js đang hoạt động ổn định.'
     });
 });
 
@@ -72,6 +82,7 @@ const feedbackRoutes = require('./routes/feedbackRoute');
 const chatbotRoutes = require('./routes/chatbotRoute');
 const friendRoutes = require('./routes/friendRoute');
 const cvRoutes = require('./routes/cvRoute');
+const adminRoutes = require('./routes/adminRoute');
 //
 app.use('/api/auth', authRoutes);
 app.use('/api/home', homeRoutes);
@@ -86,6 +97,7 @@ app.use('/api/feedback', checkAuthAPI, feedbackRoutes);
 app.use('/api/chatbot', checkAuthAPI, chatbotRoutes);
 app.use('/api/friends', checkAuthAPI, friendRoutes);
 app.use('/api/cv', checkAuthAPI, cvRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.use('/api', (req, res) => {
     return res.status(404).json({
@@ -101,6 +113,7 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`=========================================`);
     console.log(`🚀 Server [Quản lý dự án] đang chạy tại cổng: ${PORT}`);
-    console.log(`👉 Link kiểm tra: http://localhost:${PORT}/`);
+        console.log(`👉 Giao diện đăng nhập: http://localhost:${PORT}/`);
+        console.log(`👉 Health check: http://localhost:${PORT}/health`);
     console.log(`=========================================`);
 });

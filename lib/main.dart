@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'app_language_controller.dart';
 import 'app_shell.dart';
 import 'app_theme_controller.dart';
 import 'create_project_screen.dart';
@@ -8,13 +9,16 @@ import 'forgot_password_screen.dart';
 import 'login_screen.dart';
 import 'notification_screen.dart';
 import 'project_members_screen.dart';
+import 'register_otp_screen.dart';
 import 'register_screen.dart';
 import 'reset_password_screen.dart';
+import 'reset_otp_screen.dart';
 import 'services/auth_service.dart';
 import 'widgets/app_bottom_navigation.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await appLanguageController.load();
   await appThemeController.load();
   final initialRoute = await AuthService.shouldAutoLogin() ? '/home' : '/login';
   runApp(MyApp(initialRoute: initialRoute));
@@ -88,6 +92,24 @@ class MyApp extends StatelessWidget {
                 builder: (context) => ResetPasswordScreen(
                   email: args['email'] ?? '',
                   resetToken: args['reset_token'] ?? '',
+                ),
+              );
+            }
+
+            if (settings.name == '/reset-otp') {
+              final args = settings.arguments as Map<String, dynamic>? ?? {};
+              return MaterialPageRoute(
+                builder: (context) => ResetOtpScreen(
+                  email: args['email']?.toString() ?? '',
+                ),
+              );
+            }
+
+            if (settings.name == '/register-otp') {
+              final args = settings.arguments as Map<String, dynamic>? ?? {};
+              return MaterialPageRoute(
+                builder: (context) => RegisterOtpScreen(
+                  email: args['email']?.toString() ?? '',
                 ),
               );
             }

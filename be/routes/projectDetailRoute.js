@@ -1,8 +1,15 @@
 ﻿const express = require('express');
 const mysql = require('mysql2/promise');
 const jwt = require('jsonwebtoken');
+const fs = require('fs');
+const path = require('path');
 
 const router = express.Router();
+const fileUploadDir = path.join(__dirname, '..', 'upload', 'file');
+
+if (!fs.existsSync(fileUploadDir)) {
+    fs.mkdirSync(fileUploadDir, { recursive: true });
+}
 
 const pool = mysql.createPool({
     host: process.env.DB_HOST,
@@ -78,6 +85,40 @@ function normalizeTextList(value) {
         .filter(Boolean);
 }
 
+function sanitizeFileName(fileName) {
+    const ext = path.extname(String(fileName || '')).toLowerCase();
+    const baseName = path
+        .basename(String(fileName || 'file'), ext)
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9_-]/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 60) || 'file';
+
+    return `${baseName}${ext || ''}`;
+}
+
+function saveBase64File({ fileName, fileBase64 }) {
+    const rawBase64 = String(fileBase64 || '').trim();
+    if (!rawBase64) return null;
+
+    const base64 = rawBase64.includes(',')
+        ? rawBase64.split(',').pop()
+        : rawBase64;
+    const buffer = Buffer.from(base64, 'base64');
+    const safeName = sanitizeFileName(fileName);
+    const storedName = `${Date.now()}_${Math.round(Math.random() * 1e9)}_${safeName}`;
+    const absolutePath = path.join(fileUploadDir, storedName);
+
+    fs.writeFileSync(absolutePath, buffer);
+
+    return {
+        file_url: `/upload/file/${storedName}`,
+        file_size: buffer.length
+    };
+}
+
 function normalizeAttachments(value) {
     const rawList = Array.isArray(value) ? value : value ? [value] : [];
     return rawList
@@ -85,11 +126,13 @@ function normalizeAttachments(value) {
             if (!item || typeof item !== 'object') return null;
             const fileName = String(item.file_name || item.name || '').trim();
             const fileUrl = String(item.file_url || item.url || item.path || '').trim();
+            const fileBase64 = String(item.file_base64 || item.base64 || '').trim();
             const fileType = String(item.file_type || item.type || 'document').trim();
-            if (!fileName && !fileUrl) return null;
+            if (!fileName || (!fileUrl && !fileBase64)) return null;
             return {
                 file_name: fileName || fileUrl.split('/').pop() || 'Tá»‡p Ä‘Ă­nh kĂ¨m',
                 file_url: fileUrl,
+                file_base64: fileBase64,
                 file_type: ['image', 'video', 'document'].includes(fileType) ? fileType : 'document',
                 mime_type: String(item.mime_type || item.mime || '').trim() || null,
                 file_size: Number.isFinite(Number(item.file_size || item.size))
@@ -461,17 +504,29 @@ async function insertAttachments(connection, taskIds, attachments, uploaderId) {
     const values = [];
     for (const taskId of taskIds) {
         for (const attachment of attachments) {
+            const savedFile = attachment.file_base64
+                ? saveBase64File({
+                    fileName: attachment.file_name,
+                    fileBase64: attachment.file_base64
+                })
+                : null;
+            const fileUrl = savedFile?.file_url || attachment.file_url;
+            const fileSize = savedFile?.file_size || attachment.file_size;
+            if (!fileUrl) continue;
+
             values.push([
                 taskId,
                 uploaderId,
                 attachment.file_name,
-                attachment.file_url,
+                fileUrl,
                 attachment.file_type,
                 attachment.mime_type,
-                attachment.file_size
+                fileSize
             ]);
         }
     }
+
+    if (values.length === 0) return false;
 
     await connection.query(
         `INSERT INTO task_attachments

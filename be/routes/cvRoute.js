@@ -239,7 +239,8 @@ async function loadCvData(userId) {
     [userId, userId]
   );
 
-  const generatedProjects = buildProjectsText(projects);
+  const suggestedProjects = buildProjectsText(projects);
+  const cvProjects = cv ? text(cv.projects) : suggestedProjects;
 
   return {
     profile: {
@@ -258,7 +259,7 @@ async function loadCvData(userId) {
       skills: cv?.skills || '',
       softSkills: cv?.soft_skills || '',
       languages: cv?.languages || '',
-      projects: generatedProjects,
+      projects: cvProjects,
       certificates: cv?.certificates || '',
     },
     completedProjects: projects.map((project) => ({

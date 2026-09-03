@@ -359,6 +359,18 @@ class _ChatScreenState extends State<ChatScreen> {
     return DateTime.tryParse(rawValue)?.toLocal();
   }
 
+  String? _buildAvatarUrl(String? avatarPath) {
+    if (avatarPath == null || avatarPath.trim().isEmpty) return null;
+    final avatar = avatarPath.trim();
+    if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
+      return avatar;
+    }
+
+    final apiUri = Uri.parse(AuthService.baseUrl);
+    final origin = '${apiUri.scheme}://${apiUri.authority}';
+    return '$origin$avatar';
+  }
+
   void loadMockMessages() {
     // Giả lập dữ liệu tin nhắn
     _messages = [
@@ -1336,6 +1348,7 @@ class _ChatScreenState extends State<ChatScreen> {
         final color = parseHexColor(friend['color']);
         final name = friend['name']?.toString() ?? '';
         final initial = name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : '?';
+        final avatarUrl = _buildAvatarUrl(friend['avatar']?.toString());
 
         return GestureDetector(
           onTap: () {
@@ -1368,16 +1381,32 @@ class _ChatScreenState extends State<ChatScreen> {
                     color: color.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: Center(
-                    child: Text(
-                      initial,
-                      style: TextStyle(
-                        color: color,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: avatarUrl == null
+                      ? Center(
+                          child: Text(
+                            initial,
+                            style: TextStyle(
+                              color: color,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        )
+                      : Image.network(
+                          avatarUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Center(
+                            child: Text(
+                              initial,
+                              style: TextStyle(
+                                color: color,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ),
                 ),
                 const SizedBox(width: 14),
                 Expanded(

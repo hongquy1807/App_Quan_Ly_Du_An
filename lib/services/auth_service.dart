@@ -69,10 +69,9 @@ class AuthService {
 
     if (kIsWeb) return 'http://localhost:3000/api';
     if (defaultTargetPlatform == TargetPlatform.android) {
-      // IP nhà hongquy
-      //return 'http://192.168.1.29:3000/api';
-      // IP ở trường
-      return 'http://192.168.0.195:3000/api';
+      // Android emulator reaches the host machine through 10.0.2.2.
+      // Physical devices must use the computer's current LAN IP.
+      return 'http://192.168.1.29:3000/api';
     }
     return 'http://localhost:3000/api';
   }
@@ -102,8 +101,28 @@ class AuthService {
     });
   }
 
+  Future<Map<String, dynamic>> verifyRegisterOtp({
+    required String email,
+    required String otp,
+  }) async {
+    return _post('/auth/verify-register-otp', {
+      'email': email,
+      'otp': otp,
+    });
+  }
+
   Future<Map<String, dynamic>> forgotPassword({required String email}) {
     return _post('/auth/forgot-password', {'email': email});
+  }
+
+  Future<Map<String, dynamic>> verifyResetOtp({
+    required String email,
+    required String otp,
+  }) {
+    return _post('/auth/verify-reset-otp', {
+      'email': email,
+      'otp': otp,
+    });
   }
 
   Future<Map<String, dynamic>> resetPassword({

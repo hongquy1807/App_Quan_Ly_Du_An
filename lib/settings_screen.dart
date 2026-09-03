@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'app_language_controller.dart';
 import 'app_theme_controller.dart';
 
 enum AppLanguage { vietnamese, english, chinese }
@@ -51,6 +52,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_languageStorageKey, language.name);
+    await appLanguageController.setMode(
+      switch (language) {
+        AppLanguage.vietnamese => AppLanguageMode.vietnamese,
+        AppLanguage.english => AppLanguageMode.english,
+        AppLanguage.chinese => AppLanguageMode.chinese,
+      },
+    );
   }
 
   String _t(String vi, String en, String zh) {

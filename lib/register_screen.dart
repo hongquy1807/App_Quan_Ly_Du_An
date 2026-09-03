@@ -1,11 +1,9 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
+import 'app_language_controller.dart';
 import 'app_theme_controller.dart';
 import 'services/auth_service.dart';
-
-enum RegisterLanguage { vietnamese, english, chinese }
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -15,8 +13,6 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  static const _languageStorageKey = 'app_language';
-
   final _formKey = GlobalKey<FormState>();
   final _fullNameController = TextEditingController();
   final _emailController = TextEditingController();
@@ -28,35 +24,29 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _obscureConfirmPassword = true;
   bool _agreeTerms = false;
   bool _isLoading = false;
-  RegisterLanguage _language = RegisterLanguage.vietnamese;
 
   @override
   void initState() {
     super.initState();
-    _loadLanguage();
+    appLanguageController.addListener(_refreshLanguage);
   }
 
-  Future<void> _loadLanguage() async {
-    final prefs = await SharedPreferences.getInstance();
-    final rawValue = prefs.getString(_languageStorageKey);
-    if (!mounted) return;
-    setState(() {
-      _language = RegisterLanguage.values.firstWhere(
-        (language) => language.name == rawValue,
-        orElse: () => RegisterLanguage.vietnamese,
-      );
-    });
+  @override
+  void dispose() {
+    appLanguageController.removeListener(_refreshLanguage);
+    _fullNameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+  void _refreshLanguage() {
+    if (mounted) setState(() {});
   }
 
   String _t(String vi, String en, String zh) {
-    switch (_language) {
-      case RegisterLanguage.vietnamese:
-        return vi;
-      case RegisterLanguage.english:
-        return en;
-      case RegisterLanguage.chinese:
-        return zh;
-    }
+    return appLanguageController.text(vi, en, zh);
   }
 
   Color get _fieldColor {
@@ -75,80 +65,64 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return const Color(0xFFE5E7EB);
   }
 
-  @override
-  void dispose() {
-    _fullNameController.dispose();
-    _emailController.dispose();
-    _passwordController.dispose();
-    _confirmPasswordController.dispose();
-    super.dispose();
-  }
-
   Future<void> _handleRegister() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
     if (!_agreeTerms) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _t(
-              'Vui lòng đồng ý với điều khoản sử dụng',
-              'Please agree to the terms of use',
-              '请同意使用条款',
-            ),
-          ),
-          backgroundColor: const Color(0xFFEF4444),
-          duration: const Duration(seconds: 2),
+      _showMessage(
+        _t(
+          'Vui lòng đồng ý với điều khoản sử dụng',
+          'Please agree to the terms of use',
+          '请同意使用条款',
         ),
+        isError: true,
       );
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
-      await _authService.register(
+      final result = await _authService.register(
         name: _fullNameController.text.trim(),
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
 
       if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-      });
+      setState(() => _isLoading = false);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _t(
-              'Đăng ký thành công! Vui lòng đăng nhập',
-              'Registration successful! Please sign in',
-              '注册成功！请登录',
-            ),
-          ),
-          backgroundColor: const Color(0xFF10B981),
-          duration: const Duration(seconds: 2),
+      _showMessage(
+        _t(
+          'Đã gửi mã OTP đến email của bạn',
+          'OTP has been sent to your email',
+          '验证码已发送到您的邮箱',
         ),
       );
 
-      Navigator.pop(context);
+      Navigator.pushNamed(
+        context,
+        '/register-otp',
+        arguments: {
+          'email': result['email']?.toString() ?? _emailController.text.trim(),
+        },
+      );
     } on ApiException catch (err) {
       if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(err.message),
-          backgroundColor: const Color(0xFFEF4444),
-          duration: const Duration(seconds: 3),
-        ),
-      );
+      setState(() => _isLoading = false);
+      _showMessage(err.message, isError: true);
     }
+  }
+
+  void _showMessage(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor:
+            isError ? const Color(0xFFEF4444) : const Color(0xFF10B981),
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   @override
@@ -201,14 +175,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         prefixIcon: Icons.person_outline,
                       ),
                       validator: (value) {
-                        if (value == null || value.isEmpty) {
+                        final name = value?.trim() ?? '';
+                        if (name.isEmpty) {
                           return _t(
                             'Vui lòng nhập họ và tên',
                             'Please enter your full name',
                             '请输入姓名',
                           );
                         }
-                        if (value.trim().split(' ').length < 2) {
+                        if (name.split(RegExp(r'\s+')).length < 2) {
                           return _t(
                             'Vui lòng nhập đầy đủ họ và tên',
                             'Please enter your full name',
@@ -231,7 +206,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         prefixIcon: Icons.email_outlined,
                       ),
                       validator: (value) {
-                        if (value == null || value.isEmpty) {
+                        final email = value?.trim() ?? '';
+                        if (email.isEmpty) {
                           return _t(
                             'Vui lòng nhập email',
                             'Please enter your email',
@@ -240,7 +216,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         }
                         if (!RegExp(
                           r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
-                        ).hasMatch(value)) {
+                        ).hasMatch(email)) {
                           return _t(
                             'Email không hợp lệ',
                             'Invalid email address',
@@ -277,21 +253,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                       ),
                       validator: (value) {
-                        if (value == null || value.isEmpty) {
+                        final password = value ?? '';
+                        if (password.isEmpty) {
                           return _t(
                             'Vui lòng nhập mật khẩu',
                             'Please enter your password',
                             '请输入密码',
                           );
                         }
-                        if (value.length < 6) {
+                        if (password.length < 6) {
                           return _t(
                             'Mật khẩu phải có ít nhất 6 ký tự',
                             'Password must be at least 6 characters',
                             '密码至少需要 6 个字符',
                           );
                         }
-                        if (!RegExp(r'^(?=.*[A-Za-z])(?=.*\d)').hasMatch(value)) {
+                        if (!RegExp(r'^(?=.*[A-Za-z])(?=.*\d)')
+                            .hasMatch(password)) {
                           return _t(
                             'Mật khẩu phải có ít nhất 1 chữ và 1 số',
                             'Password must include at least 1 letter and 1 number',
@@ -303,11 +281,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                     const SizedBox(height: 20),
                     _buildLabel(
-                      _t(
-                        'Xác nhận mật khẩu',
-                        'Confirm password',
-                        '确认密码',
-                      ),
+                      _t('Xác nhận mật khẩu', 'Confirm password', '确认密码'),
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
@@ -361,9 +335,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           child: Checkbox(
                             value: _agreeTerms,
                             onChanged: (value) {
-                              setState(() {
-                                _agreeTerms = value ?? false;
-                              });
+                              setState(() => _agreeTerms = value ?? false);
                             },
                             activeColor: theme.primaryColor,
                             checkColor: Colors.white,
@@ -389,8 +361,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
                           ),
-                          disabledBackgroundColor: theme.primaryColor
-                              .withValues(alpha: 0.6),
+                          disabledBackgroundColor:
+                              theme.primaryColor.withValues(alpha: 0.6),
                         ),
                         child: _isLoading
                             ? Row(
@@ -409,9 +381,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   const SizedBox(width: 12),
                                   Text(
                                     _t(
-                                      'Đang đăng ký...',
-                                      'Creating account...',
-                                      '正在注册...',
+                                      'Đang gửi OTP...',
+                                      'Sending OTP...',
+                                      '正在发送验证码...',
                                     ),
                                     style: const TextStyle(
                                       fontSize: 16,
@@ -480,9 +452,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                         ),
                         GestureDetector(
-                          onTap: () {
-                            Navigator.pop(context);
-                          },
+                          onTap: () => Navigator.pop(context),
                           child: Text(
                             _t('Đăng nhập', 'Sign in', '登录'),
                             style: TextStyle(
@@ -550,15 +520,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ),
             recognizer: TapGestureRecognizer()
               ..onTap = () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      _t(
-                        'Mở điều khoản sử dụng',
-                        'Open terms of use',
-                        '打开使用条款',
-                      ),
-                    ),
+                _showMessage(
+                  _t(
+                    'Mở điều khoản sử dụng',
+                    'Open terms of use',
+                    '打开使用条款',
                   ),
                 );
               },
@@ -572,15 +538,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ),
             recognizer: TapGestureRecognizer()
               ..onTap = () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      _t(
-                        'Mở chính sách bảo mật',
-                        'Open privacy policy',
-                        '打开隐私政策',
-                      ),
-                    ),
+                _showMessage(
+                  _t(
+                    'Mở chính sách bảo mật',
+                    'Open privacy policy',
+                    '打开隐私政策',
                   ),
                 );
               },
@@ -615,6 +577,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
         borderSide: const BorderSide(color: Color(0xFFEF4444), width: 1.5),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: Color(0xFFEF4444), width: 2),
       ),
       filled: true,
       fillColor: _fieldColor,

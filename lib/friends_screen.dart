@@ -225,6 +225,21 @@ class _FriendsScreenState extends State<FriendsScreen> {
     );
   }
 
+  String? _buildAvatarUrl(String? avatar) {
+    final value = avatar?.trim();
+    if (value == null || value.isEmpty) return null;
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+      return value;
+    }
+
+    final apiBase = AuthService.baseUrl;
+    final serverBase = apiBase.endsWith('/api')
+        ? apiBase.substring(0, apiBase.length - 4)
+        : apiBase;
+    final normalizedPath = value.startsWith('/') ? value : '/$value';
+    return '$serverBase$normalizedPath';
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = appThemeController;
@@ -725,6 +740,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
     final name = friend['name']?.toString() ?? '';
     final email = friend['email']?.toString() ?? '';
     final initial = name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase();
+    final avatarUrl = _buildAvatarUrl(friend['avatar']?.toString());
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -745,20 +761,36 @@ class _FriendsScreenState extends State<FriendsScreen> {
           Container(
             width: 48,
             height: 48,
+            clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
               color: theme.primaryColor.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(14),
             ),
-            child: Center(
-              child: Text(
-                initial,
-                style: TextStyle(
-                  color: theme.primaryColor,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
+            child: avatarUrl == null
+                ? Center(
+                    child: Text(
+                      initial,
+                      style: TextStyle(
+                        color: theme.primaryColor,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  )
+                : Image.network(
+                    avatarUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Center(
+                      child: Text(
+                        initial,
+                        style: TextStyle(
+                          color: theme.primaryColor,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
           ),
           const SizedBox(width: 14),
           Expanded(

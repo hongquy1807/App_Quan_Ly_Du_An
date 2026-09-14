@@ -47,7 +47,7 @@ npm install
 node server.js
 ```
 
-Giữ terminal này chạy. Kiểm tra server tại `http://localhost:3000/health`. Trang quản trị ở `http://localhost:3000/admin/login.html` (cần tài khoản có quyền quản trị).
+Giữ terminal này chạy. Kiểm tra server tại `http://localhost:3000/health`.
 
 ## 4. Đổi IP trong file xử lý đăng nhập
 
@@ -82,7 +82,18 @@ Giữ MySQL và backend hoạt động trong suốt quá trình sử dụng. N�
 
 Chatbot cần `GEMINI_API_KEY`; thông báo đẩy cần cấu hình Firebase tương ứng ở ứng dụng và backend nếu muốn sử dụng các tính năng này.
 
-tài khoản thử nghiệm:
+## 6. Chạy và đăng nhập web admin
+
+Sau khi nạp CSDL và chạy backend bằng `node server.js` như bước 3:
+
+1. Mở trình duyệt và truy cập `http://localhost:3000/admin/login.html`.
+2. Nhập email và mật khẩu tài khoản **admin** ở phần tài khoản thử nghiệm bên dưới.
+3. Nhấn **Truy cập hệ thống**. Đăng nhập thành công sẽ chuyển đến trang quản trị `http://localhost:3000/admin/index.html`.
+
+Web admin được phục vụ trực tiếp bởi backend, chỉ cần giữ MySQL và backend chạy; không cần chạy Flutter hay Live Server. Nếu truy cập từ máy khác cùng mạng, thay `localhost` bằng IP máy chạy backend. Web admin tự dùng địa chỉ API theo địa chỉ đang mở, không cần sửa IP trong mã web.
+
+## 7. Tài khoản thử nghiệm
+
 - user:
     tài khoản: famqi2003@gmail.com
     mật khẩu:qwe123

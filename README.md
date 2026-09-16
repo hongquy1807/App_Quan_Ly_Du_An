@@ -4,6 +4,8 @@
 
 Video demo dự án được đặt tại [`QuanLyDuAn.mp4`](./QuanLyDuAn.mp4). Video giới thiệu tổng quan các chức năng chính của hệ thống như đăng nhập, quản lý dự án, tạo nhiệm vụ, theo dõi tiến độ, nhắn tin, chatbot và các tiện ích trong hồ sơ cá nhân.
 
+link demo youtube: https://youtu.be/aVJHDr9BH1g
+
 Ứng dụng Flutter sử dụng backend Node.js/Express và cơ sở dữ liệu MySQL.
 
 ## 1. Chuẩn bị

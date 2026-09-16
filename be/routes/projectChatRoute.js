@@ -1,6 +1,7 @@
-const express = require('express');
+﻿const express = require('express');
 const mysql = require('mysql2/promise');
 const jwt = require('jsonwebtoken');
+const { sendPushToUser } = require('../services/pushService');
 
 const router = express.Router();
 
@@ -30,7 +31,7 @@ function requireAuth(req, res, next) {
         if (!token) {
             return res.status(401).json({
                 success: false,
-                message: 'Bạn chưa đăng nhập.'
+                message: 'Báº¡n chÆ°a Ä‘Äƒng nháº­p.'
             });
         }
 
@@ -39,7 +40,7 @@ function requireAuth(req, res, next) {
     } catch (err) {
         return res.status(401).json({
             success: false,
-            message: 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn.'
+            message: 'PhiĂªn Ä‘Äƒng nháº­p khĂ´ng há»£p lá»‡ hoáº·c Ä‘Ă£ háº¿t háº¡n.'
         });
     }
 }
@@ -197,7 +198,7 @@ async function getOrCreateDirectConversation(userId, friendId, connection) {
 }
 
 // GET /api/project-chat/friends
-// Danh sách bạn bè để nhắn tin riêng.
+// Danh sĂ¡ch báº¡n bĂ¨ Ä‘á»ƒ nháº¯n tin riĂªng.
 router.get('/friends', async (req, res) => {
     try {
         const userId = req.user.id;
@@ -239,10 +240,10 @@ router.get('/friends', async (req, res) => {
             data: rows.map(mapDirectFriend)
         });
     } catch (err) {
-        console.error('Lỗi lấy danh sách bạn bè chat:', err);
+        console.error('Lá»—i láº¥y danh sĂ¡ch báº¡n bĂ¨ chat:', err);
         return res.status(500).json({
             success: false,
-            message: 'Không thể lấy danh sách bạn bè để nhắn tin.',
+            message: 'KhĂ´ng thá»ƒ láº¥y danh sĂ¡ch báº¡n bĂ¨ Ä‘á»ƒ nháº¯n tin.',
             error: err.message
         });
     }
@@ -259,7 +260,7 @@ router.get('/direct/:friendId/messages', async (req, res) => {
         if (!friendId) {
             return res.status(400).json({
                 success: false,
-                message: 'ID bạn bè không hợp lệ.'
+                message: 'ID báº¡n bĂ¨ khĂ´ng há»£p lá»‡.'
             });
         }
 
@@ -267,7 +268,7 @@ router.get('/direct/:friendId/messages', async (req, res) => {
         if (!friend) {
             return res.status(404).json({
                 success: false,
-                message: 'Không tìm thấy bạn bè hoặc hai bạn chưa kết bạn.'
+                message: 'KhĂ´ng tĂ¬m tháº¥y báº¡n bĂ¨ hoáº·c hai báº¡n chÆ°a káº¿t báº¡n.'
             });
         }
 
@@ -308,10 +309,10 @@ router.get('/direct/:friendId/messages', async (req, res) => {
         try {
             await connection.rollback();
         } catch (_) {}
-        console.error('Lỗi lấy tin nhắn bạn bè:', err);
+        console.error('Lá»—i láº¥y tin nháº¯n báº¡n bĂ¨:', err);
         return res.status(500).json({
             success: false,
-            message: 'Không thể lấy tin nhắn bạn bè.',
+            message: 'KhĂ´ng thá»ƒ láº¥y tin nháº¯n báº¡n bĂ¨.',
             error: err.message
         });
     } finally {
@@ -332,14 +333,14 @@ router.post('/direct/:friendId/messages', async (req, res) => {
         if (!friendId) {
             return res.status(400).json({
                 success: false,
-                message: 'ID bạn bè không hợp lệ.'
+                message: 'ID báº¡n bĂ¨ khĂ´ng há»£p lá»‡.'
             });
         }
 
         if (!content && !fileUrl) {
             return res.status(400).json({
                 success: false,
-                message: 'Tin nhắn không được để trống.'
+                message: 'Tin nháº¯n khĂ´ng Ä‘Æ°á»£c Ä‘á»ƒ trá»‘ng.'
             });
         }
 
@@ -349,7 +350,7 @@ router.post('/direct/:friendId/messages', async (req, res) => {
             await connection.rollback();
             return res.status(404).json({
                 success: false,
-                message: 'Không tìm thấy bạn bè hoặc hai bạn chưa kết bạn.'
+                message: 'KhĂ´ng tĂ¬m tháº¥y báº¡n bĂ¨ hoáº·c hai báº¡n chÆ°a káº¿t báº¡n.'
             });
         }
 
@@ -367,11 +368,18 @@ router.post('/direct/:friendId/messages', async (req, res) => {
             [conversationId]
         );
 
+        const directNotificationContent = 'Bạn có một tin nhắn mới.';
         await connection.query(
             `INSERT INTO notifications (user_id, type, content, data, \`read\`)
              VALUES (?, 'direct_message', ?, JSON_OBJECT('friend_id', ?, 'message_id', ?), 0)`,
-            [friendId, 'Bạn có một tin nhắn mới.', userId, result.insertId]
+            [friendId, directNotificationContent, userId, result.insertId]
         );
+        sendPushToUser(friendId, {
+            title: 'Tin nhắn mới',
+            body: directNotificationContent,
+            data: { type: 'direct_message', friend_id: userId, message_id: result.insertId }
+        }).catch((err) => console.warn('Khong the gui push notification:', err.message));
+
 
         const [rows] = await connection.query(
             `SELECT m.id, m.conversation_id, m.sender_id, sender.name AS sender_name,
@@ -388,17 +396,17 @@ router.post('/direct/:friendId/messages', async (req, res) => {
         await connection.commit();
         return res.status(201).json({
             success: true,
-            message: 'Gửi tin nhắn thành công.',
+            message: 'Gá»­i tin nháº¯n thĂ nh cĂ´ng.',
             data: mapDirectMessage(rows[0], userId)
         });
     } catch (err) {
         try {
             await connection.rollback();
         } catch (_) {}
-        console.error('Lỗi gửi tin nhắn bạn bè:', err);
+        console.error('Lá»—i gá»­i tin nháº¯n báº¡n bĂ¨:', err);
         return res.status(500).json({
             success: false,
-            message: 'Không thể gửi tin nhắn bạn bè.',
+            message: 'KhĂ´ng thá»ƒ gá»­i tin nháº¯n báº¡n bĂ¨.',
             error: err.message
         });
     } finally {
@@ -407,7 +415,7 @@ router.post('/direct/:friendId/messages', async (req, res) => {
 });
 
 // GET /api/project-chat/projects
-// Danh sách dự án mà user đang tham gia để hiển thị ở trang Tin nhắn.
+// Danh sĂ¡ch dá»± Ă¡n mĂ  user Ä‘ang tham gia Ä‘á»ƒ hiá»ƒn thá»‹ á»Ÿ trang Tin nháº¯n.
 router.get('/projects', async (req, res) => {
     try {
         const userId = req.user.id;
@@ -447,17 +455,17 @@ router.get('/projects', async (req, res) => {
             data: rows.map(mapProject)
         });
     } catch (err) {
-        console.error('Lỗi lấy danh sách dự án chat:', err);
+        console.error('Lá»—i láº¥y danh sĂ¡ch dá»± Ă¡n chat:', err);
         return res.status(500).json({
             success: false,
-            message: 'Không thể lấy danh sách dự án chat.',
+            message: 'KhĂ´ng thá»ƒ láº¥y danh sĂ¡ch dá»± Ă¡n chat.',
             error: err.message
         });
     }
 });
 
 // GET /api/project-chat/:projectId/messages
-// Lấy tin nhắn của một dự án. Chỉ thành viên dự án mới được xem.
+// Láº¥y tin nháº¯n cá»§a má»™t dá»± Ă¡n. Chá»‰ thĂ nh viĂªn dá»± Ă¡n má»›i Ä‘Æ°á»£c xem.
 router.get('/:projectId/messages', async (req, res) => {
     try {
         const userId = req.user.id;
@@ -468,7 +476,7 @@ router.get('/:projectId/messages', async (req, res) => {
         if (!projectId) {
             return res.status(400).json({
                 success: false,
-                message: 'ID dự án không hợp lệ.'
+                message: 'ID dá»± Ă¡n khĂ´ng há»£p lá»‡.'
             });
         }
 
@@ -476,7 +484,7 @@ router.get('/:projectId/messages', async (req, res) => {
         if (!project) {
             return res.status(404).json({
                 success: false,
-                message: 'Không tìm thấy dự án hoặc bạn không có quyền xem tin nhắn.'
+                message: 'KhĂ´ng tĂ¬m tháº¥y dá»± Ă¡n hoáº·c báº¡n khĂ´ng cĂ³ quyá»n xem tin nháº¯n.'
             });
         }
 
@@ -513,17 +521,17 @@ router.get('/:projectId/messages', async (req, res) => {
             }
         });
     } catch (err) {
-        console.error('Lỗi lấy tin nhắn dự án:', err);
+        console.error('Lá»—i láº¥y tin nháº¯n dá»± Ă¡n:', err);
         return res.status(500).json({
             success: false,
-            message: 'Không thể lấy tin nhắn dự án.',
+            message: 'KhĂ´ng thá»ƒ láº¥y tin nháº¯n dá»± Ă¡n.',
             error: err.message
         });
     }
 });
 
 // POST /api/project-chat/:projectId/messages
-// Gửi tin nhắn vào nhóm chat của dự án. Tất cả thành viên dự án đều xem được.
+// Gá»­i tin nháº¯n vĂ o nhĂ³m chat cá»§a dá»± Ă¡n. Táº¥t cáº£ thĂ nh viĂªn dá»± Ă¡n Ä‘á»u xem Ä‘Æ°á»£c.
 router.post('/:projectId/messages', async (req, res) => {
     const connection = await pool.getConnection();
     try {
@@ -541,7 +549,7 @@ router.post('/:projectId/messages', async (req, res) => {
             connection.release();
             return res.status(400).json({
                 success: false,
-                message: 'ID dự án không hợp lệ.'
+                message: 'ID dá»± Ă¡n khĂ´ng há»£p lá»‡.'
             });
         }
 
@@ -549,7 +557,7 @@ router.post('/:projectId/messages', async (req, res) => {
             connection.release();
             return res.status(400).json({
                 success: false,
-                message: 'Loại tin nhắn không hợp lệ.'
+                message: 'Loáº¡i tin nháº¯n khĂ´ng há»£p lá»‡.'
             });
         }
 
@@ -557,7 +565,7 @@ router.post('/:projectId/messages', async (req, res) => {
             connection.release();
             return res.status(400).json({
                 success: false,
-                message: 'Tin nhắn không được để trống.'
+                message: 'Tin nháº¯n khĂ´ng Ä‘Æ°á»£c Ä‘á»ƒ trá»‘ng.'
             });
         }
 
@@ -568,7 +576,7 @@ router.post('/:projectId/messages', async (req, res) => {
             await connection.rollback();
             return res.status(404).json({
                 success: false,
-                message: 'Không tìm thấy dự án hoặc bạn không có quyền gửi tin nhắn.'
+                message: 'KhĂ´ng tĂ¬m tháº¥y dá»± Ă¡n hoáº·c báº¡n khĂ´ng cĂ³ quyá»n gá»­i tin nháº¯n.'
             });
         }
 
@@ -587,10 +595,11 @@ router.post('/:projectId/messages', async (req, res) => {
         );
 
         if (memberRows.length > 0) {
+            const projectNotificationContent = `Bạn có tin nhắn mới ở dự án ${project.name}.`;
             const notificationValues = memberRows.map((member) => [
                 member.user_id,
                 'project_message',
-                `Bạn có tin nhắn mới ở dự án ${project.name}.`,
+                projectNotificationContent,
                 JSON.stringify({ project_id: projectId, message_id: result.insertId }),
                 0
             ]);
@@ -600,7 +609,15 @@ router.post('/:projectId/messages', async (req, res) => {
                  VALUES ?`,
                 [notificationValues]
             );
+            memberRows.forEach((member) => {
+                sendPushToUser(member.user_id, {
+                    title: 'Tin nhắn dự án',
+                    body: projectNotificationContent,
+                    data: { type: 'project_message', project_id: projectId, message_id: result.insertId }
+                }).catch((err) => console.warn('Khong the gui push notification:', err.message));
+            });
         }
+
 
         const [rows] = await connection.query(
             `SELECT pm.id, pm.project_id, pm.sender_id, u.name AS sender_name,
@@ -618,17 +635,17 @@ router.post('/:projectId/messages', async (req, res) => {
 
         return res.status(201).json({
             success: true,
-            message: 'Gửi tin nhắn thành công.',
+            message: 'Gá»­i tin nháº¯n thĂ nh cĂ´ng.',
             data: mapMessage(rows[0], userId)
         });
     } catch (err) {
         try {
             await connection.rollback();
         } catch (_) {}
-        console.error('Lỗi gửi tin nhắn dự án:', err);
+        console.error('Lá»—i gá»­i tin nháº¯n dá»± Ă¡n:', err);
         return res.status(500).json({
             success: false,
-            message: 'Không thể gửi tin nhắn dự án.',
+            message: 'KhĂ´ng thá»ƒ gá»­i tin nháº¯n dá»± Ă¡n.',
             error: err.message
         });
     } finally {
@@ -637,7 +654,7 @@ router.post('/:projectId/messages', async (req, res) => {
 });
 
 // DELETE /api/project-chat/messages/:messageId
-// Xóa mềm tin nhắn của chính mình.
+// XĂ³a má»m tin nháº¯n cá»§a chĂ­nh mĂ¬nh.
 router.delete('/messages/:messageId', async (req, res) => {
     try {
         const userId = req.user.id;
@@ -646,7 +663,7 @@ router.delete('/messages/:messageId', async (req, res) => {
         if (!messageId) {
             return res.status(400).json({
                 success: false,
-                message: 'ID tin nhắn không hợp lệ.'
+                message: 'ID tin nháº¯n khĂ´ng há»£p lá»‡.'
             });
         }
 
@@ -660,19 +677,19 @@ router.delete('/messages/:messageId', async (req, res) => {
         if (result.affectedRows === 0) {
             return res.status(404).json({
                 success: false,
-                message: 'Không tìm thấy tin nhắn hoặc bạn không có quyền xóa.'
+                message: 'KhĂ´ng tĂ¬m tháº¥y tin nháº¯n hoáº·c báº¡n khĂ´ng cĂ³ quyá»n xĂ³a.'
             });
         }
 
         return res.json({
             success: true,
-            message: 'Đã xóa tin nhắn.'
+            message: 'ÄĂ£ xĂ³a tin nháº¯n.'
         });
     } catch (err) {
-        console.error('Lỗi xóa tin nhắn dự án:', err);
+        console.error('Lá»—i xĂ³a tin nháº¯n dá»± Ă¡n:', err);
         return res.status(500).json({
             success: false,
-            message: 'Không thể xóa tin nhắn.',
+            message: 'KhĂ´ng thá»ƒ xĂ³a tin nháº¯n.',
             error: err.message
         });
     }

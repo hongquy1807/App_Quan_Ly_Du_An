@@ -4,6 +4,7 @@ import 'chat_screen.dart';
 import 'home_screen.dart';
 import 'profile_screen.dart';
 import 'project_screen.dart';
+import 'services/push_notification_service.dart';
 import 'timeline_screen.dart';
 import 'widgets/app_bottom_navigation.dart';
 
@@ -31,6 +32,7 @@ class _AppShellState extends State<AppShell> {
   void initState() {
     super.initState();
     _currentItem = widget.initialItem;
+    PushNotificationService.instance.registerCurrentDevice();
   }
 
   void _selectItem(AppBottomNavItem item) {

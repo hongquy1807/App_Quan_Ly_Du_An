@@ -2,6 +2,7 @@
 const mysql = require('mysql2/promise');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const { sendPushToUser } = require('../services/pushService');
 
 const router = express.Router();
 
@@ -1254,16 +1255,26 @@ router.post('/', async (req, res) => {
                     [projectId, userId, normalizeEmail(user.email), user.id, MEMBER_ROLE_ID, INVITATION_STATUS.pending]
                 );
 
+                const notificationContent = `Bạn được mời tham gia dự án ${name}.`;
                 await connection.query(
                     `INSERT INTO notifications (user_id, type, content, data)
                      VALUES (?, ?, ?, ?)`,
                     [
                         user.id,
                         'project_invitation',
-                        `Bạn được mời tham gia dự án ${name}.`,
+                        notificationContent,
                         JSON.stringify({ invitation_id: invitationResult.insertId, project_id: projectId })
                     ]
                 );
+                sendPushToUser(user.id, {
+                    title: 'Lời mời dự án',
+                    body: notificationContent,
+                    data: {
+                        type: 'project_invitation',
+                        invitation_id: invitationResult.insertId,
+                        project_id: projectId
+                    }
+                }).catch((err) => console.warn('Khong the gui push notification:', err.message));
             }
         }
 

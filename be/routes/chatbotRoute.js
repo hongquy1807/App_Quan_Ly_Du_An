@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const mysql = require('mysql2/promise');
 const jwt = require('jsonwebtoken');
 
@@ -16,8 +16,9 @@ const pool = mysql.createPool({
 });
 
 const JWT_SECRET = process.env.JWT_SECRET || 'quanlyduan-dev-secret';
-const GEMINI_MODEL = process.env.GEMINI_MODEL || '';
-let cachedGeminiModel = null;
+const DEFAULT_GEMINI_MODEL = 'models/gemini-3.6-flash';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+let cachedGeminiModels = null;
 
 function getBearerToken(req) {
     const authHeader = req.headers.authorization || '';
@@ -31,7 +32,7 @@ function requireAuth(req, res, next) {
         if (!token) {
             return res.status(401).json({
                 success: false,
-                message: 'Bạn chưa đăng nhập.'
+                message: 'Báº¡n chÆ°a Ä‘Äƒng nháº­p.'
             });
         }
 
@@ -40,7 +41,7 @@ function requireAuth(req, res, next) {
     } catch (err) {
         return res.status(401).json({
             success: false,
-            message: 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn.'
+            message: 'PhiĂªn Ä‘Äƒng nháº­p khĂ´ng há»£p lá»‡ hoáº·c Ä‘Ă£ háº¿t háº¡n.'
         });
     }
 }
@@ -72,45 +73,67 @@ async function callGemini(prompt, { temperature = 0.2 } = {}) {
         throw new Error('Thiếu GEMINI_API_KEY trong biến môi trường backend.');
     }
 
-    const model = await resolveGeminiModel(apiKey);
-    const url = `https://generativelanguage.googleapis.com/v1beta/${model}:generateContent?key=${apiKey}`;
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            contents: [
-                {
-                    role: 'user',
-                    parts: [{ text: prompt }]
-                }
-            ],
-            generationConfig: {
-                temperature,
-                topP: 0.9,
-                maxOutputTokens: 1024
-            }
-        })
-    });
+    const models = await resolveGeminiModels(apiKey);
+    let lastError = null;
 
-    const data = await response.json();
-    if (!response.ok) {
+    for (const model of models) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/${model}:generateContent?key=${apiKey}`;
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [
+                    {
+                        role: 'user',
+                        parts: [{ text: prompt }]
+                    }
+                ],
+                generationConfig: {
+                    temperature,
+                    topP: 0.9,
+                    maxOutputTokens: 1024
+                }
+            })
+        });
+
+        const data = await response.json();
+        if (response.ok) {
+            console.log(`Gemini model đang dùng: ${model}`);
+            return data.candidates?.[0]?.content?.parts?.map((part) => part.text).join('\n').trim() || '';
+        }
+
         const message = data.error?.message || 'Không thể gọi Gemini API.';
-        throw new Error(message);
+        lastError = new Error(message);
+        if (!isRetryableGeminiError(response.status, message)) {
+            throw lastError;
+        }
+
+        console.warn(`Gemini model ${model} lỗi tạm thời, thử model khác: ${message}`);
     }
 
-    return data.candidates?.[0]?.content?.parts?.map((part) => part.text).join('\n').trim() || '';
+    throw lastError || new Error('Không thể gọi Gemini API.');
 }
 
-async function resolveGeminiModel(apiKey) {
-    if (GEMINI_MODEL) {
-        const model = GEMINI_MODEL.startsWith('models/')
-            ? GEMINI_MODEL
-            : `models/${GEMINI_MODEL}`;
-        return model;
-    }
+function normalizeGeminiModelName(model) {
+    const value = String(model || '').trim();
+    if (!value) return '';
+    return value.startsWith('models/') ? value : `models/${value}`;
+}
 
-    if (cachedGeminiModel) return cachedGeminiModel;
+function isRetryableGeminiError(status, message) {
+    const text = String(message || '').toLowerCase();
+    return status === 404 ||
+        status === 429 ||
+        status === 503 ||
+        text.includes('high demand') ||
+        text.includes('no longer available') ||
+        text.includes('not found') ||
+        text.includes('overloaded') ||
+        text.includes('temporarily') ||
+        text.includes('try again later');
+}
 
+async function fetchAvailableGeminiModels(apiKey) {
     const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
     );
@@ -123,36 +146,56 @@ async function resolveGeminiModel(apiKey) {
     const models = Array.isArray(data.models) ? data.models : [];
     const generativeModels = models.filter((model) => {
         const methods = model.supportedGenerationMethods || [];
-        return methods.includes('generateContent');
+        return methods.includes('generateContent') &&
+            !model.name.includes('image') &&
+            !model.name.includes('embedding');
     });
 
-    const preferred = generativeModels.find((model) =>
-        model.name.includes('flash') &&
-        !model.name.includes('image') &&
-        !model.name.includes('embedding')
-    ) || generativeModels[0];
-
+    const preferred = generativeModels.find((model) => model.name.includes('flash')) || generativeModels[0];
     if (!preferred?.name) {
         throw new Error('Không tìm thấy Gemini model nào hỗ trợ generateContent cho API key này.');
     }
 
-    cachedGeminiModel = preferred.name;
-    console.log(`Gemini model đang dùng: ${cachedGeminiModel}`);
-    return cachedGeminiModel;
+    return generativeModels
+        .map((model) => model.name)
+        .sort((a, b) => {
+            const aFlash = a.includes('flash') ? 0 : 1;
+            const bFlash = b.includes('flash') ? 0 : 1;
+            return aFlash - bFlash || a.localeCompare(b);
+        });
 }
 
+async function resolveGeminiModels(apiKey) {
+    const configuredModels = [
+        GEMINI_MODEL,
+        ...(process.env.GEMINI_FALLBACK_MODELS || '').split(',')
+    ]
+        .map(normalizeGeminiModelName)
+        .filter(Boolean);
+
+    if (!cachedGeminiModels) {
+        try {
+            cachedGeminiModels = await fetchAvailableGeminiModels(apiKey);
+        } catch (err) {
+            console.warn(`Không thể lấy danh sách Gemini models, dùng model cấu hình: ${err.message}`);
+            cachedGeminiModels = [];
+        }
+    }
+
+    return [...new Set([...configuredModels, ...cachedGeminiModels])];
+}
 function fallbackIntent(question) {
     const q = question.toLowerCase();
-    if (q.includes('quá hạn') || q.includes('trễ hạn')) {
+    if (q.includes('quĂ¡ háº¡n') || q.includes('trá»… háº¡n')) {
         return { intent: 'find_overdue_tasks', retrieval_type: 'sql', entities: {} };
     }
-    if (q.includes('task') || q.includes('nhiệm vụ')) {
-        if (q.includes('của tôi') || q.includes('tôi')) {
+    if (q.includes('task') || q.includes('nhiá»‡m vá»¥')) {
+        if (q.includes('cá»§a tĂ´i') || q.includes('tĂ´i')) {
             return { intent: 'list_my_tasks', retrieval_type: 'sql', entities: {} };
         }
         return { intent: 'project_summary', retrieval_type: 'sql', entities: {} };
     }
-    if (q.includes('thành viên') || q.includes('ai tham gia')) {
+    if (q.includes('thĂ nh viĂªn') || q.includes('ai tham gia')) {
         return { intent: 'project_members', retrieval_type: 'sql', entities: {} };
     }
     return { intent: 'general_help', retrieval_type: 'none', entities: {} };
@@ -160,27 +203,27 @@ function fallbackIntent(question) {
 
 async function parseIntent(question) {
     const prompt = `
-Bạn là bộ phân tích câu hỏi cho ứng dụng quản lý dự án.
-Hãy trả về JSON duy nhất, không markdown.
+Báº¡n lĂ  bá»™ phĂ¢n tĂ­ch cĂ¢u há»i cho á»©ng dá»¥ng quáº£n lĂ½ dá»± Ă¡n.
+HĂ£y tráº£ vá» JSON duy nháº¥t, khĂ´ng markdown.
 
-Các intent hợp lệ:
-- list_my_tasks: user hỏi các task/nhiệm vụ của bản thân
-- find_overdue_tasks: user hỏi task quá hạn/trễ hạn
-- count_incomplete_tasks: user hỏi số task chưa hoàn thành
-- project_summary: user hỏi tóm tắt/tình hình dự án
-- project_members: user hỏi thành viên dự án
-- general_help: câu hỏi chung, chưa cần truy vấn database
+CĂ¡c intent há»£p lá»‡:
+- list_my_tasks: user há»i cĂ¡c task/nhiá»‡m vá»¥ cá»§a báº£n thĂ¢n
+- find_overdue_tasks: user há»i task quĂ¡ háº¡n/trá»… háº¡n
+- count_incomplete_tasks: user há»i sá»‘ task chÆ°a hoĂ n thĂ nh
+- project_summary: user há»i tĂ³m táº¯t/tĂ¬nh hĂ¬nh dá»± Ă¡n
+- project_members: user há»i thĂ nh viĂªn dá»± Ă¡n
+- general_help: cĂ¢u há»i chung, chÆ°a cáº§n truy váº¥n database
 
 Schema JSON:
 {
   "intent": "intent_name",
   "retrieval_type": "sql|none",
   "entities": {
-    "project_name": "tên dự án nếu có"
+    "project_name": "tĂªn dá»± Ă¡n náº¿u cĂ³"
   }
 }
 
-Câu hỏi: ${question}
+CĂ¢u há»i: ${question}
 `;
 
     try {
@@ -194,7 +237,7 @@ Câu hỏi: ${question}
             };
         }
     } catch (err) {
-        console.warn('Không thể phân tích intent bằng Gemini, dùng fallback:', err.message);
+        console.warn('KhĂ´ng thá»ƒ phĂ¢n tĂ­ch intent báº±ng Gemini, dĂ¹ng fallback:', err.message);
     }
 
     return fallbackIntent(question);
@@ -214,7 +257,7 @@ async function retrieveSqlContext(intentResult, userId) {
         return {
             type: 'general',
             rows: [],
-            summary: 'Người dùng hỏi câu hỏi chung về quản lý dự án.'
+            summary: 'NgÆ°á»i dĂ¹ng há»i cĂ¢u há»i chung vá» quáº£n lĂ½ dá»± Ă¡n.'
         };
     }
 
@@ -254,7 +297,7 @@ async function retrieveSqlContext(intentResult, userId) {
                     t.due_date,
                     p.id AS project_id,
                     p.name AS project_name,
-                    COALESCE(u.name, 'Cả team') AS assignee_name
+                    COALESCE(u.name, 'Cáº£ team') AS assignee_name
              FROM tasks t
              INNER JOIN projects p ON p.id = t.project_id
              INNER JOIN project_members pm ON pm.project_id = p.id
@@ -306,7 +349,7 @@ async function retrieveSqlContext(intentResult, userId) {
                     p.name AS project_name,
                     u.name AS member_name,
                     u.email,
-                    COALESCE(pr.name, 'Thành viên') AS role_name
+                    COALESCE(pr.name, 'ThĂ nh viĂªn') AS role_name
              FROM projects p
              INNER JOIN project_members current_member
                 ON current_member.project_id = p.id AND current_member.user_id = ?
@@ -357,28 +400,28 @@ async function retrieveSqlContext(intentResult, userId) {
 function buildContext(question, intentResult, retrieval) {
     const rows = retrieval.rows || [];
     return `
-Câu hỏi của người dùng:
+CĂ¢u há»i cá»§a ngÆ°á»i dĂ¹ng:
 ${question}
 
-Kết quả phân tích:
+Káº¿t quáº£ phĂ¢n tĂ­ch:
 ${JSON.stringify(intentResult, null, 2)}
 
-Dữ liệu lấy từ MySQL:
-${rows.length > 0 ? JSON.stringify(rows, null, 2) : 'Không có dữ liệu phù hợp.'}
+Dá»¯ liá»‡u láº¥y tá»« MySQL:
+${rows.length > 0 ? JSON.stringify(rows, null, 2) : 'KhĂ´ng cĂ³ dá»¯ liá»‡u phĂ¹ há»£p.'}
 
-Yêu cầu trả lời:
-- Trả lời theo đúng ngôn ngữ được yêu cầu ở phần "Ngôn ngữ trả lời".
-- Chỉ dựa trên dữ liệu MySQL ở trên.
-- Nếu không có dữ liệu phù hợp, hãy nói rõ là chưa tìm thấy dữ liệu.
-- Không bịa tên dự án, task, deadline, thành viên hoặc số liệu.
-- Trả lời ngắn gọn, dễ hiểu.
+YĂªu cáº§u tráº£ lá»i:
+- Tráº£ lá»i theo Ä‘Ăºng ngĂ´n ngá»¯ Ä‘Æ°á»£c yĂªu cáº§u á»Ÿ pháº§n "NgĂ´n ngá»¯ tráº£ lá»i".
+- Chá»‰ dá»±a trĂªn dá»¯ liá»‡u MySQL á»Ÿ trĂªn.
+- Náº¿u khĂ´ng cĂ³ dá»¯ liá»‡u phĂ¹ há»£p, hĂ£y nĂ³i rĂµ lĂ  chÆ°a tĂ¬m tháº¥y dá»¯ liá»‡u.
+- KhĂ´ng bá»‹a tĂªn dá»± Ă¡n, task, deadline, thĂ nh viĂªn hoáº·c sá»‘ liá»‡u.
+- Tráº£ lá»i ngáº¯n gá»n, dá»… hiá»ƒu.
 `;
 }
 
 function answerLanguageInstruction(language) {
     if (language === 'english') return 'Answer in English.';
-    if (language === 'chinese') return '用中文回答。';
-    return 'Trả lời bằng tiếng Việt.';
+    if (language === 'chinese') return 'ç”¨ä¸­æ–‡å›ç­”ă€‚';
+    return 'Tráº£ lá»i báº±ng tiáº¿ng Viá»‡t.';
 }
 
 function normalizeLanguage(language) {
@@ -400,7 +443,7 @@ router.post('/ask', async (req, res) => {
         if (!question) {
             return res.status(400).json({
                 success: false,
-                message: 'Vui lòng nhập câu hỏi.'
+                message: 'Vui lĂ²ng nháº­p cĂ¢u há»i.'
             });
         }
 
@@ -409,7 +452,7 @@ router.post('/ask', async (req, res) => {
         const retrieval = await retrieveSqlContext(intent, req.user.id);
         const context = `${buildContext(question, intent, retrieval)}
 
-Ngôn ngữ trả lời:
+NgĂ´n ngá»¯ tráº£ lá»i:
 ${answerLanguageInstruction(language)}
 `;
         const answer = await generateAnswer(context);
@@ -425,13 +468,14 @@ ${answerLanguageInstruction(language)}
             }
         });
     } catch (err) {
-        console.error('Lỗi chatbot:', err);
+        console.error('Lá»—i chatbot:', err);
         return res.status(500).json({
             success: false,
-            message: 'Không thể xử lý câu hỏi chatbot.',
+            message: 'KhĂ´ng thá»ƒ xá»­ lĂ½ cĂ¢u há»i chatbot.',
             error: err.message
         });
     }
 });
 
 module.exports = router;
+

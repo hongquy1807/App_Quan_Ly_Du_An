@@ -71,6 +71,7 @@ class AuthService {
     if (defaultTargetPlatform == TargetPlatform.android) {
       // Android emulator reaches the host machine through 10.0.2.2.
       // Physical devices must use the computer's current LAN IP.
+      // return 'http://192.168.69.150:3000/api';
       return 'http://192.168.1.29:3000/api';
     }
     return 'http://localhost:3000/api';

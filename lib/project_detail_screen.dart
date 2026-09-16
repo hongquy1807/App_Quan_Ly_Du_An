@@ -268,6 +268,8 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
       'description': task['description']?.toString() ?? '',
       'dueDate': dueDate,
       'assignee': task['assignee']?.toString() ?? 'Cả team',
+      'assignee_ids': task['assignee_ids'] ?? task['assigneeIds'],
+      'assignees': task['assignees'],
       'assigneeId': task['assigneeId']?.toString() ??
           task['assignee_id']?.toString() ??
           '',
@@ -403,7 +405,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
       case 'my_tasks':
         // Tất cả task của tôi
         filtered = _allTasks
-            .where((task) => task['assigneeId'] == _currentUserId)
+            .where(_isAssignedToCurrentUser)
             .toList();
         break;
 
@@ -452,7 +454,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
   int _getTaskCount(String filter) {
     switch (filter) {
       case 'my_tasks':
-        return _allTasks.where((t) => t['assigneeId'] == _currentUserId).length;
+        return _allTasks.where(_isAssignedToCurrentUser).length;
       case 'in_progress':
         return _allTasks
             .where((t) => t['statusCode'] == 'in_progress' && !t['isCompleted'])
@@ -1182,12 +1184,33 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     );
   }
 
+  bool _isAssignedToCurrentUser(Map<String, dynamic> task) {
+    final currentUserId = _currentUserId;
+    final assigneeIds = task['assignee_ids'] ?? task['assigneeIds'];
+    if (assigneeIds is List) {
+      return assigneeIds.any((id) => id.toString() == currentUserId);
+    }
+    if (assigneeIds != null && assigneeIds.toString().trim().isNotEmpty) {
+      return assigneeIds
+          .toString()
+          .split(',')
+          .map((id) => id.trim())
+          .contains(currentUserId);
+    }
+    return task['assigneeId']?.toString() == currentUserId;
+  }
+
   Widget _buildTaskCard(Map<String, dynamic> task) {
     final theme = appThemeController;
     final dueDate = task['dueDate'] as DateTime;
     final isOverdue = dueDate.isBefore(DateTime.now()) && !task['isCompleted'];
     final isCompleted = task['isCompleted'];
-    final isMyTask = task['assigneeId'] == _currentUserId;
+    final isMyTask = _isAssignedToCurrentUser(task);
+    final assigneeText = (task['assignee']?.toString().trim().isNotEmpty ?? false)
+        ? task['assignee'].toString()
+        : _t('Cả team', 'Whole team', '全队');
+    final dueDateText =
+        '${dueDate.day.toString().padLeft(2, '0')}/${dueDate.month.toString().padLeft(2, '0')}/${dueDate.year}';
 
     return GestureDetector(
       onTap: () => _openTaskDetail(task),
@@ -1309,54 +1332,61 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
               ],
             ),
             const SizedBox(height: 10),
-            // Bottom row
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Row(
-                  children: [
-                    // Assignee
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: isMyTask
-                            ? const Color(0xFF6366F1).withValues(alpha: 0.1)
-                            : const Color(0xFF10B981).withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            isMyTask
-                                ? Icons.person_rounded
-                                : Icons.people_rounded,
-                            size: 12,
-                            color: isMyTask
-                                ? const Color(0xFF6366F1)
-                                : const Color(0xFF10B981),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            isMyTask
-                                ? _t('Tôi', 'Me', '我')
-                                : task['assignee'],
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w500,
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isMyTask
+                              ? const Color(0xFF6366F1).withValues(alpha: 0.1)
+                              : const Color(0xFF10B981).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              isMyTask
+                                  ? Icons.person_rounded
+                                  : Icons.people_rounded,
+                              size: 12,
                               color: isMyTask
                                   ? const Color(0xFF6366F1)
                                   : const Color(0xFF10B981),
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 4),
+                            Text(
+                              assigneeText,
+                              softWrap: false,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w500,
+                                color: isMyTask
+                                    ? const Color(0xFF6366F1)
+                                    : const Color(0xFF10B981),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    // Due date
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
                     Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
                           Icons.access_time_rounded,
@@ -1367,60 +1397,64 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          '${dueDate.day.toString().padLeft(2, '0')}/${dueDate.month.toString().padLeft(2, '0')}/${dueDate.year}',
+                          dueDateText,
                           style: TextStyle(
                             fontSize: 12,
                             color: isOverdue
                                 ? const Color(0xFFEF4444)
                                 : const Color(0xFF6B7280),
-                            fontWeight: isOverdue
-                                ? FontWeight.w600
-                                : FontWeight.w400,
+                            fontWeight:
+                                isOverdue ? FontWeight.w600 : FontWeight.w400,
                           ),
                         ),
                       ],
                     ),
+                    const SizedBox(height: 6),
+                    Container(
+                      constraints: const BoxConstraints(maxWidth: 118),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isCompleted
+                            ? const Color(0xFF10B981).withValues(alpha: 0.1)
+                            : isOverdue
+                            ? const Color(0xFFEF4444).withValues(alpha: 0.1)
+                            : const Color(0xFF6366F1).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isCompleted
+                              ? const Color(0xFF10B981).withValues(alpha: 0.2)
+                              : isOverdue
+                              ? const Color(0xFFEF4444).withValues(alpha: 0.2)
+                              : const Color(0xFF6366F1).withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: Text(
+                        isCompleted
+                            ? _t('Hoàn thành', 'Completed', '已完成')
+                            : isOverdue
+                            ? _t('Trễ hạn', 'Overdue', '已逾期')
+                            : _statusText(
+                                task['status'],
+                                isCompleted,
+                                task['statusCode'],
+                              ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: isCompleted
+                              ? const Color(0xFF10B981)
+                              : isOverdue
+                              ? const Color(0xFFEF4444)
+                              : const Color(0xFF6366F1),
+                        ),
+                      ),
+                    ),
                   ],
-                ),
-                // Status badge
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isCompleted
-                        ? const Color(0xFF10B981).withValues(alpha: 0.1)
-                        : isOverdue
-                        ? const Color(0xFFEF4444).withValues(alpha: 0.1)
-                        : const Color(0xFF6366F1).withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: isCompleted
-                          ? const Color(0xFF10B981).withValues(alpha: 0.2)
-                          : isOverdue
-                          ? const Color(0xFFEF4444).withValues(alpha: 0.2)
-                          : const Color(0xFF6366F1).withValues(alpha: 0.2),
-                    ),
-                  ),
-                  child: Text(
-                    isCompleted
-                        ? _t('Hoàn thành', 'Completed', '已完成')
-                        : isOverdue
-                        ? _t('Trễ hạn', 'Overdue', '已逾期')
-                        : _statusText(task['status'], isCompleted, task['statusCode']),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: isCompleted
-                          ? const Color(0xFF10B981)
-                          : isOverdue
-                          ? const Color(0xFFEF4444)
-                          : const Color(0xFF6366F1),
-                    ),
-                  ),
                 ),
               ],
             ),

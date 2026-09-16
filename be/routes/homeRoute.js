@@ -92,6 +92,22 @@ function mapTask(row) {
     };
 }
 
+async function ensureTaskAssigneesTable(connection = pool) {
+    await connection.query(
+        `CREATE TABLE IF NOT EXISTS task_assignees (
+            task_id INT NOT NULL,
+            user_id INT NOT NULL,
+            assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (task_id, user_id),
+            KEY task_assignees_user_idx (user_id),
+            CONSTRAINT task_assignees_home_task_fk
+                FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+            CONSTRAINT task_assignees_home_user_fk
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+    );
+}
+
 async function getCurrentUser(userId) {
     const [rows] = await pool.query(
         `SELECT u.id, u.email, u.name, u.avatar, u.created_at, u.last_login_at,
@@ -131,18 +147,27 @@ async function getProjects(userId) {
 }
 
 async function getAssignedTasks(userId) {
+    await ensureTaskAssigneesTable(pool);
     const [rows] = await pool.query(
         `SELECT t.id, t.project_id, t.title, t.description, t.due_date,
                 t.status, p.name AS project_name
          FROM tasks t
          INNER JOIN projects p ON p.id = t.project_id
-         WHERE t.assignee_id = ?
+         WHERE (
+                t.assignee_id = ?
+                OR t.assignee_id IS NULL
+                OR EXISTS (
+                    SELECT 1
+                    FROM task_assignees ta
+                    WHERE ta.task_id = t.id AND ta.user_id = ?
+                )
+           )
            AND COALESCE(p.status, 'planning') <> 'completed'
          ORDER BY
             CASE WHEN t.due_date IS NULL THEN 1 ELSE 0 END,
             t.due_date ASC,
             t.created_at DESC`,
-        [userId]
+        [userId, userId]
     );
 
     return rows.map(mapTask);

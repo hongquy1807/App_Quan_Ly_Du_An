@@ -57,6 +57,22 @@ function requireAuth(req, res, next) {
     }
 }
 
+async function ensureTaskAssigneesTable(connection = pool) {
+    await connection.query(
+        `CREATE TABLE IF NOT EXISTS task_assignees (
+            task_id INT NOT NULL,
+            user_id INT NOT NULL,
+            assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (task_id, user_id),
+            KEY task_assignees_user_idx (user_id),
+            CONSTRAINT task_assignees_timeline_task_fk
+                FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+            CONSTRAINT task_assignees_timeline_user_fk
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+    );
+}
+
 function formatDate(value) {
     if (!value) return null;
     const date = value instanceof Date ? value : new Date(value);
@@ -190,6 +206,7 @@ async function getTimelineTasks({
 }) {
     const connection = await pool.getConnection();
     try {
+        await ensureTaskAssigneesTable(connection);
         const hasSubtasks = await tableExists(connection, 'task_subtasks');
         const hasTaskStartDate = await columnExists(connection, 'tasks', 'start_date');
         const startDateSelect = hasTaskStartDate
@@ -209,13 +226,17 @@ async function getTimelineTasks({
             : '';
 
         const filters = [
-            '(t.assignee_id = ? OR t.assignee_id IS NULL)',
+            `(t.assignee_id = ? OR t.assignee_id IS NULL OR EXISTS (
+                SELECT 1
+                FROM task_assignees ta
+                WHERE ta.task_id = t.id AND ta.user_id = ?
+            ))`,
             "COALESCE(p.status, 'planning') <> 'completed'",
             "t.status <> 'done'",
             `${taskEndExpression} >= ?`,
             `${taskStartExpression} <= ?`
         ];
-        const values = [userId, startDate, endDate];
+        const values = [userId, userId, startDate, endDate];
 
         if (projectId) {
             filters.push('t.project_id = ?');

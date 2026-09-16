@@ -3,6 +3,7 @@ const mysql = require('mysql2/promise');
 const jwt = require('jsonwebtoken');
 const fs = require('fs');
 const path = require('path');
+const { sendPushToUser } = require('../services/pushService');
 
 const router = express.Router();
 const fileUploadDir = path.join(__dirname, '..', 'upload', 'file');
@@ -255,6 +256,10 @@ function mapAttachment(row) {
 
 function mapTask(row, subtasksByTask = {}, attachmentsByTask = {}) {
     const isCompleted = row.status === 'done';
+    const assignees = parseTaskAssignees(row);
+    const assigneeName = assignees.length > 0
+        ? assignees.map((assignee) => assignee.name || assignee.email).filter(Boolean).join(', ')
+        : row.assignee_name || 'Cả team';
     return {
         id: row.id,
         project_id: row.project_id,
@@ -262,7 +267,10 @@ function mapTask(row, subtasksByTask = {}, attachmentsByTask = {}) {
         description: row.description,
         assignee_id: row.assignee_id,
         assigneeId: row.assignee_id ? String(row.assignee_id) : '',
-        assignee: row.assignee_name || 'Cáº£ team',
+        assignee_ids: assignees.map((assignee) => assignee.id),
+        assigneeIds: assignees.map((assignee) => String(assignee.id)),
+        assignees,
+        assignee: assigneeName || 'Cả team',
         assignee_email: row.assignee_email,
         start_date: row.start_date,
         startDate: row.start_date,
@@ -277,6 +285,21 @@ function mapTask(row, subtasksByTask = {}, attachmentsByTask = {}) {
         createdAt: row.created_at,
         updated_at: row.updated_at
     };
+}
+
+function parseTaskAssignees(row) {
+    const ids = String(row.assignee_ids || '')
+        .split(',')
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0);
+    const names = String(row.assignee_names || '').split('||');
+    const emails = String(row.assignee_emails || '').split('||');
+    return ids.map((id, index) => ({
+        id,
+        user_id: id,
+        name: names[index] || '',
+        email: emails[index] || ''
+    }));
 }
 
 async function tableExists(connection, tableName) {
@@ -297,6 +320,22 @@ async function ensureTaskStartDateColumn(connection) {
     await connection.query(
         'ALTER TABLE tasks ADD COLUMN start_date DATE NULL AFTER assignee_id'
     );
+}
+
+async function ensureTaskAssigneesTable(connection) {
+    await connection.query(`
+        CREATE TABLE IF NOT EXISTS task_assignees (
+            task_id INT NOT NULL,
+            user_id INT NOT NULL,
+            assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (task_id, user_id),
+            KEY task_assignees_user_idx (user_id),
+            CONSTRAINT task_assignees_task_fk
+                FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+            CONSTRAINT task_assignees_user_fk
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
 }
 
 async function ensureTaskAttachmentScopeColumn(connection) {
@@ -441,13 +480,22 @@ async function getAttachmentsByTaskIds(taskIds, connection = pool) {
 
 async function getTasks(projectId) {
     await ensureTaskStartDateColumn(pool);
+    await ensureTaskAssigneesTable(pool);
     const [rows] = await pool.query(
         `SELECT t.id, t.project_id, t.title, t.description, t.assignee_id,
                 assignee.name AS assignee_name, assignee.email AS assignee_email,
+                GROUP_CONCAT(ta.user_id ORDER BY u.name ASC SEPARATOR ',') AS assignee_ids,
+                GROUP_CONCAT(COALESCE(u.name, '') ORDER BY u.name ASC SEPARATOR '||') AS assignee_names,
+                GROUP_CONCAT(COALESCE(u.email, '') ORDER BY u.name ASC SEPARATOR '||') AS assignee_emails,
                 t.start_date, t.due_date, t.status, t.created_at, t.updated_at
          FROM tasks t
          LEFT JOIN users assignee ON assignee.id = t.assignee_id
+         LEFT JOIN task_assignees ta ON ta.task_id = t.id
+         LEFT JOIN users u ON u.id = ta.user_id
          WHERE t.project_id = ?
+         GROUP BY t.id, t.project_id, t.title, t.description, t.assignee_id,
+                  assignee.name, assignee.email, t.start_date, t.due_date,
+                  t.status, t.created_at, t.updated_at
          ORDER BY
             CASE WHEN t.status = 'done' THEN 1 ELSE 0 END,
             CASE WHEN t.due_date IS NULL THEN 1 ELSE 0 END,
@@ -985,6 +1033,7 @@ router.post('/:id/tasks', async (req, res) => {
         }
 
         await ensureTaskStartDateColumn(connection);
+        await ensureTaskAssigneesTable(connection);
         await connection.beginTransaction();
 
         const projectMemberIds = await getProjectMemberIds(projectId, connection);
@@ -998,28 +1047,38 @@ router.post('/:id/tasks', async (req, res) => {
             });
         }
 
-        const taskAssignees = assigneeIds.length > 0 ? assigneeIds : [null];
-        const createdTaskIds = [];
+        const primaryAssigneeId = assigneeIds[0] || null;
+        const [result] = await connection.query(
+            `INSERT INTO tasks (project_id, title, description, assignee_id, start_date, due_date, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [projectId, title, description, primaryAssigneeId, startDate, dueDate, status]
+        );
+        const createdTaskIds = [result.insertId];
 
-        for (const assigneeId of taskAssignees) {
-            const [result] = await connection.query(
-                `INSERT INTO tasks (project_id, title, description, assignee_id, start_date, due_date, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-                [projectId, title, description, assigneeId, startDate, dueDate, status]
+        if (assigneeIds.length > 0) {
+            await connection.query(
+                `INSERT IGNORE INTO task_assignees (task_id, user_id)
+                 VALUES ?`,
+                [assigneeIds.map((assigneeId) => [result.insertId, assigneeId])]
             );
-            createdTaskIds.push(result.insertId);
+        }
 
-            if (assigneeId) {
-                await connection.query(
-                    `INSERT INTO notifications (user_id, type, content, data, \`read\`)
-                     VALUES (?, 'task', ?, ?, 0)`,
-                    [
-                        assigneeId,
-                        `Báº¡n Ä‘Æ°á»£c giao nhiá»‡m vá»¥ má»›i: ${title}`,
-                        JSON.stringify({ project_id: projectId, task_id: result.insertId })
-                    ]
-                );
-            }
+        for (const assigneeId of assigneeIds) {
+            const notificationContent = `Bạn được giao nhiệm vụ mới: ${title}`;
+            await connection.query(
+                `INSERT INTO notifications (user_id, type, content, data, \`read\`)
+                 VALUES (?, 'task', ?, ?, 0)`,
+                [
+                    assigneeId,
+                    notificationContent,
+                    JSON.stringify({ project_id: projectId, task_id: result.insertId })
+                ]
+            );
+            sendPushToUser(assigneeId, {
+                title: 'Nhiệm vụ mới',
+                body: notificationContent,
+                data: { type: 'task', project_id: projectId, task_id: result.insertId }
+            }).catch((err) => console.warn('Khong the gui push notification:', err.message));
         }
 
         const subtasksSaved = await insertSubtasks(connection, createdTaskIds, subtaskTitles);
@@ -1030,10 +1089,18 @@ router.post('/:id/tasks', async (req, res) => {
         const [rows] = await connection.query(
             `SELECT t.id, t.project_id, t.title, t.description, t.assignee_id,
                     assignee.name AS assignee_name, assignee.email AS assignee_email,
+                    GROUP_CONCAT(ta.user_id ORDER BY u.name ASC SEPARATOR ',') AS assignee_ids,
+                    GROUP_CONCAT(COALESCE(u.name, '') ORDER BY u.name ASC SEPARATOR '||') AS assignee_names,
+                    GROUP_CONCAT(COALESCE(u.email, '') ORDER BY u.name ASC SEPARATOR '||') AS assignee_emails,
                     t.start_date, t.due_date, t.status, t.created_at, t.updated_at
              FROM tasks t
              LEFT JOIN users assignee ON assignee.id = t.assignee_id
+             LEFT JOIN task_assignees ta ON ta.task_id = t.id
+             LEFT JOIN users u ON u.id = ta.user_id
              WHERE t.id IN (?)
+             GROUP BY t.id, t.project_id, t.title, t.description, t.assignee_id,
+                      assignee.name, assignee.email, t.start_date, t.due_date,
+                      t.status, t.created_at, t.updated_at
              ORDER BY t.id ASC`,
             [createdTaskIds]
         );

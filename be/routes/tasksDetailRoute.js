@@ -1,8 +1,9 @@
-const express = require('express');
+﻿const express = require('express');
 const fs = require('fs');
 const mysql = require('mysql2/promise');
 const path = require('path');
 const jwt = require('jsonwebtoken');
+const { sendPushToUser } = require('../services/pushService');
 
 const router = express.Router();
 
@@ -69,13 +70,24 @@ function saveBase64File({ fileName, fileBase64 }) {
     };
 }
 
+function normalizeIdList(value) {
+    if (value === undefined || value === null || value === '') return [];
+    const values = Array.isArray(value) ? value : [value];
+    return [...new Set(
+        values
+            .flatMap((item) => String(item).split(','))
+            .map((item) => Number(String(item).trim()))
+            .filter((item) => Number.isInteger(item) && item > 0)
+    )];
+}
+
 function requireAuth(req, res, next) {
     try {
         const token = getBearerToken(req);
         if (!token) {
             return res.status(401).json({
                 success: false,
-                message: 'Bạn chưa đăng nhập.'
+                message: 'Báº¡n chÆ°a Ä‘Äƒng nháº­p.'
             });
         }
 
@@ -84,29 +96,49 @@ function requireAuth(req, res, next) {
     } catch (err) {
         return res.status(401).json({
             success: false,
-            message: 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn.'
+            message: 'PhiĂªn Ä‘Äƒng nháº­p khĂ´ng há»£p lá»‡ hoáº·c Ä‘Ă£ háº¿t háº¡n.'
         });
     }
 }
 
 function normalizeTaskStatus(value) {
     const status = String(value || '').trim();
+    const normalized = status
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
     switch (status) {
-        case 'Chưa nhận':
-        case 'Chưa bắt đầu':
         case 'todo':
             return 'todo';
-        case 'Đã nhận nhiệm vụ':
-        case 'Đang làm':
         case 'in_progress':
             return 'in_progress';
-        case 'Chờ duyệt':
         case 'review':
             return 'review';
-        case 'Hoàn thành':
         case 'done':
             return 'done';
         default:
+            if (
+                normalized === 'chua nhan' ||
+                normalized === 'chua bat dau' ||
+                normalized === 'todo'
+            ) {
+                return 'todo';
+            }
+            if (
+                normalized === 'da nhan' ||
+                normalized === 'da nhan nhiem vu' ||
+                normalized === 'dang lam' ||
+                normalized === 'in progress' ||
+                normalized === 'in_progress'
+            ) {
+                return 'in_progress';
+            }
+            if (normalized === 'cho duyet' || normalized === 'review') {
+                return 'review';
+            }
+            if (normalized === 'hoan thanh' || normalized === 'done') {
+                return 'done';
+            }
             return status;
     }
 }
@@ -131,18 +163,23 @@ function normalizeDate(value) {
 function mapStatus(status) {
     switch (status) {
         case 'done':
-            return 'Hoàn thành';
+            return 'HoĂ n thĂ nh';
         case 'in_progress':
-            return 'Đang làm';
+            return 'Äang lĂ m';
         case 'review':
-            return 'Chờ duyệt';
+            return 'Chá» duyá»‡t';
         case 'todo':
         default:
-            return 'Chưa bắt đầu';
+            return 'ChÆ°a báº¯t Ä‘áº§u';
     }
 }
 
 function mapTask(row) {
+    const assignees = parseTaskAssignees(row);
+    const assigneeName = assignees.length > 0
+        ? assignees.map((assignee) => assignee.name || assignee.email).filter(Boolean).join(', ')
+        : row.assignee_name || 'Cả team';
+
     return {
         id: row.id,
         project_id: row.project_id,
@@ -152,7 +189,10 @@ function mapTask(row) {
         description: row.description,
         assignee_id: row.assignee_id,
         assigneeId: row.assignee_id ? String(row.assignee_id) : '',
-        assignee: row.assignee_name || 'Cả team',
+        assignee_ids: assignees.map((assignee) => assignee.id),
+        assigneeIds: assignees.map((assignee) => String(assignee.id)),
+        assignees,
+        assignee: assigneeName || 'Cả team',
         assignee_email: row.assignee_email,
         due_date: row.due_date,
         dueDate: row.due_date,
@@ -165,6 +205,18 @@ function mapTask(row) {
     };
 }
 
+function parseTaskAssignees(row) {
+    const ids = normalizeIdList(row.assignee_ids);
+    const names = String(row.assignee_names || '').split('||');
+    const emails = String(row.assignee_emails || '').split('||');
+
+    return ids.map((id, index) => ({
+        id,
+        user_id: id,
+        name: names[index] || '',
+        email: emails[index] || ''
+    }));
+}
 function mapSubtask(row) {
     return {
         id: row.id,
@@ -262,19 +314,44 @@ async function ensureTaskCommentsTable(connection = pool) {
     );
 }
 
+async function ensureTaskAssigneesTable(connection = pool) {
+    await connection.query(
+        `CREATE TABLE IF NOT EXISTS task_assignees (
+            task_id INT NOT NULL,
+            user_id INT NOT NULL,
+            assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (task_id, user_id),
+            KEY task_assignees_user_idx (user_id),
+            CONSTRAINT task_assignees_task_fk
+                FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+            CONSTRAINT task_assignees_user_fk
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+    );
+}
+
 async function getAccessibleTask(taskId, userId, connection = pool) {
+    await ensureTaskAssigneesTable(connection);
     const [rows] = await connection.query(
         `SELECT t.id, t.project_id, t.title, t.description, t.assignee_id,
                 t.due_date, t.status, t.created_at, t.updated_at,
                 pm.project_role_id,
                 p.name AS project_name, assignee.name AS assignee_name,
-                assignee.email AS assignee_email
+                assignee.email AS assignee_email,
+                GROUP_CONCAT(ta.user_id ORDER BY u.name ASC SEPARATOR ',') AS assignee_ids,
+                GROUP_CONCAT(COALESCE(u.name, '') ORDER BY u.name ASC SEPARATOR '||') AS assignee_names,
+                GROUP_CONCAT(COALESCE(u.email, '') ORDER BY u.name ASC SEPARATOR '||') AS assignee_emails
          FROM tasks t
          INNER JOIN projects p ON p.id = t.project_id
          INNER JOIN project_members pm
                  ON pm.project_id = t.project_id AND pm.user_id = ?
          LEFT JOIN users assignee ON assignee.id = t.assignee_id
+         LEFT JOIN task_assignees ta ON ta.task_id = t.id
+         LEFT JOIN users u ON u.id = ta.user_id
          WHERE t.id = ?
+         GROUP BY t.id, t.project_id, t.title, t.description, t.assignee_id,
+                  t.due_date, t.status, t.created_at, t.updated_at, pm.project_role_id,
+                  p.name, assignee.name, assignee.email
          LIMIT 1`,
         [userId, taskId]
     );
@@ -288,6 +365,8 @@ function canManageTask(task) {
 
 function canWorkOnTask(task, userId) {
     if (!task) return false;
+    const assigneeIds = normalizeIdList(task.assignee_ids);
+    if (assigneeIds.length > 0) return assigneeIds.includes(Number(userId));
     if (!task.assignee_id) return true;
     return Number(task.assignee_id) === Number(userId);
 }
@@ -295,7 +374,7 @@ function canWorkOnTask(task, userId) {
 function taskWorkForbiddenResponse(res) {
     return res.status(403).json({
         success: false,
-        message: 'Nhiệm vụ này không được giao cho bạn. Bạn chỉ có quyền xem.'
+        message: 'Nhiá»‡m vá»¥ nĂ y khĂ´ng Ä‘Æ°á»£c giao cho báº¡n. Báº¡n chá»‰ cĂ³ quyá»n xem.'
     });
 }
 
@@ -407,14 +486,14 @@ async function buildTaskDetail(taskId, userId, connection = pool) {
 router.use(requireAuth);
 
 // GET /api/task-detail/:id
-// Lấy chi tiết task cho task_detail_screen.dart.
+// Láº¥y chi tiáº¿t task cho task_detail_screen.dart.
 router.get('/:id', async (req, res) => {
     try {
         const taskId = Number(req.params.id);
         if (!taskId) {
             return res.status(400).json({
                 success: false,
-                message: 'ID nhiệm vụ không hợp lệ.'
+                message: 'ID nhiá»‡m vá»¥ khĂ´ng há»£p lá»‡.'
             });
         }
 
@@ -422,16 +501,16 @@ router.get('/:id', async (req, res) => {
         if (!data) {
             return res.status(404).json({
                 success: false,
-                message: 'Không tìm thấy nhiệm vụ hoặc bạn không có quyền xem.'
+                message: 'KhĂ´ng tĂ¬m tháº¥y nhiá»‡m vá»¥ hoáº·c báº¡n khĂ´ng cĂ³ quyá»n xem.'
             });
         }
 
         return res.json({ success: true, data });
     } catch (err) {
-        console.error('Lỗi lấy chi tiết nhiệm vụ:', err);
+        console.error('Lá»—i láº¥y chi tiáº¿t nhiá»‡m vá»¥:', err);
         return res.status(500).json({
             success: false,
-            message: 'Không thể lấy chi tiết nhiệm vụ.',
+            message: 'KhĂ´ng thá»ƒ láº¥y chi tiáº¿t nhiá»‡m vá»¥.',
             error: err.message
         });
     }
@@ -457,6 +536,7 @@ router.patch('/:id', async (req, res) => {
 
         const fields = [];
         const values = [];
+        let nextAssigneeIds = null;
 
         if (Object.prototype.hasOwnProperty.call(req.body, 'title')) {
             const title = String(req.body.title || '').trim();
@@ -481,31 +561,39 @@ router.patch('/:id', async (req, res) => {
         }
 
         if (
+            Object.prototype.hasOwnProperty.call(req.body, 'assignee_ids') ||
+            Object.prototype.hasOwnProperty.call(req.body, 'assignees') ||
             Object.prototype.hasOwnProperty.call(req.body, 'assignee_id') ||
             Object.prototype.hasOwnProperty.call(req.body, 'assigneeId')
         ) {
-            const assigneeId = Number(req.body.assignee_id || req.body.assigneeId);
-            const nextAssigneeId = Number.isInteger(assigneeId) && assigneeId > 0 ? assigneeId : null;
+            const rawAssignees = Object.prototype.hasOwnProperty.call(req.body, 'assignee_ids')
+                ? req.body.assignee_ids
+                : Object.prototype.hasOwnProperty.call(req.body, 'assignees')
+                    ? req.body.assignees
+                    : (req.body.assignee_id || req.body.assigneeId);
+            nextAssigneeIds = normalizeIdList(rawAssignees);
 
-            if (nextAssigneeId) {
+            if (nextAssigneeIds.length > 0) {
                 const [memberRows] = await pool.query(
-                    `SELECT id
+                    `SELECT user_id
                      FROM project_members
-                     WHERE project_id = ? AND user_id = ?
-                     LIMIT 1`,
-                    [task.project_id, nextAssigneeId]
+                     WHERE project_id = ? AND user_id IN (?)`,
+                    [task.project_id, nextAssigneeIds]
                 );
+                const projectMemberIds = memberRows.map((row) => Number(row.user_id));
+                const invalidAssigneeIds = nextAssigneeIds.filter((id) => !projectMemberIds.includes(id));
 
-                if (memberRows.length === 0) {
+                if (invalidAssigneeIds.length > 0) {
                     return res.status(400).json({
                         success: false,
-                        message: 'Nguoi nhan nhiem vu khong thuoc du an.'
+                        message: 'Nguoi nhan nhiem vu khong thuoc du an.',
+                        invalid_assignee_ids: invalidAssigneeIds
                     });
                 }
             }
 
             fields.push('assignee_id = ?');
-            values.push(nextAssigneeId);
+            values.push(nextAssigneeIds[0] || null);
         }
 
         if (Object.prototype.hasOwnProperty.call(req.body, 'status') || Object.prototype.hasOwnProperty.call(req.body, 'status_code')) {
@@ -527,6 +615,18 @@ router.patch('/:id', async (req, res) => {
         values.push(taskId);
         await pool.query(`UPDATE tasks SET ${fields.join(', ')} WHERE id = ?`, values);
 
+        if (nextAssigneeIds !== null) {
+            await ensureTaskAssigneesTable(pool);
+            await pool.query('DELETE FROM task_assignees WHERE task_id = ?', [taskId]);
+            if (nextAssigneeIds.length > 0) {
+                await pool.query(
+                    `INSERT IGNORE INTO task_assignees (task_id, user_id)
+                     VALUES ?`,
+                    [nextAssigneeIds.map((assigneeId) => [taskId, assigneeId])]
+                );
+            }
+        }
+
         const data = await buildTaskDetail(taskId, req.user.id);
         return res.json({
             success: true,
@@ -544,23 +644,23 @@ router.patch('/:id', async (req, res) => {
 });
 
 // PATCH /api/task-detail/:id/status
-// Cập nhật trạng thái task: todo / in_progress / review / done.
+// Cáº­p nháº­t tráº¡ng thĂ¡i task: todo / in_progress / review / done.
 router.patch('/:id/status', async (req, res) => {
     try {
         const taskId = Number(req.params.id);
         const status = normalizeTaskStatus(req.body.status || req.body.status_code);
 
         if (!taskId) {
-            return res.status(400).json({ success: false, message: 'ID nhiệm vụ không hợp lệ.' });
+            return res.status(400).json({ success: false, message: 'ID nhiá»‡m vá»¥ khĂ´ng há»£p lá»‡.' });
         }
 
         if (!TASK_STATUSES.includes(status)) {
-            return res.status(400).json({ success: false, message: 'Trạng thái nhiệm vụ không hợp lệ.' });
+            return res.status(400).json({ success: false, message: 'Tráº¡ng thĂ¡i nhiá»‡m vá»¥ khĂ´ng há»£p lá»‡.' });
         }
 
         const task = await getAccessibleTask(taskId, req.user.id);
         if (!task) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy nhiệm vụ hoặc bạn không có quyền sửa.' });
+            return res.status(404).json({ success: false, message: 'KhĂ´ng tĂ¬m tháº¥y nhiá»‡m vá»¥ hoáº·c báº¡n khĂ´ng cĂ³ quyá»n sá»­a.' });
         }
 
         if (!canWorkOnTask(task, req.user.id)) {
@@ -569,29 +669,40 @@ router.patch('/:id/status', async (req, res) => {
 
         await pool.query('UPDATE tasks SET status = ? WHERE id = ?', [status, taskId]);
 
-        if (status === 'done' && task.assignee_id && Number(task.assignee_id) !== Number(req.user.id)) {
+        const notifyAssigneeIds = normalizeIdList(task.assignee_ids).filter((id) => id !== Number(req.user.id));
+        if (status === 'done' && notifyAssigneeIds.length > 0) {
+            const notificationContent = `Nhiệm vụ ${task.title} đã được đánh dấu hoàn thành.`;
             await pool.query(
                 `INSERT INTO notifications (user_id, type, content, data, \`read\`)
-                 VALUES (?, 'task', ?, ?, 0)`,
-                [
-                    task.assignee_id,
-                    `Nhiệm vụ ${task.title} đã được đánh dấu hoàn thành.`,
+                 VALUES ?`,
+                [notifyAssigneeIds.map((assigneeId) => [
+                    assigneeId,
+                    'task',
+                    notificationContent,
                     JSON.stringify({ task_id: taskId, project_id: task.project_id })
-                ]
+                    , 0
+                ])]
             );
+            notifyAssigneeIds.forEach((assigneeId) => {
+                sendPushToUser(assigneeId, {
+                    title: 'Cập nhật nhiệm vụ',
+                    body: notificationContent,
+                    data: { type: 'task', task_id: taskId, project_id: task.project_id }
+                }).catch((err) => console.warn('Khong the gui push notification:', err.message));
+            });
         }
 
         const data = await buildTaskDetail(taskId, req.user.id);
         return res.json({
             success: true,
-            message: 'Cập nhật trạng thái nhiệm vụ thành công.',
+            message: 'Cáº­p nháº­t tráº¡ng thĂ¡i nhiá»‡m vá»¥ thĂ nh cĂ´ng.',
             data
         });
     } catch (err) {
-        console.error('Lỗi cập nhật trạng thái nhiệm vụ:', err);
+        console.error('Lá»—i cáº­p nháº­t tráº¡ng thĂ¡i nhiá»‡m vá»¥:', err);
         return res.status(500).json({
             success: false,
-            message: 'Không thể cập nhật trạng thái nhiệm vụ.',
+            message: 'KhĂ´ng thá»ƒ cáº­p nháº­t tráº¡ng thĂ¡i nhiá»‡m vá»¥.',
             error: err.message
         });
     }
@@ -637,23 +748,23 @@ router.delete('/:id', async (req, res) => {
 });
 
 // POST /api/task-detail/:id/subtasks
-// Thêm subtask mới.
+// ThĂªm subtask má»›i.
 router.post('/:id/subtasks', async (req, res) => {
     try {
         const taskId = Number(req.params.id);
         const title = String(req.body.title || '').trim();
 
         if (!taskId) {
-            return res.status(400).json({ success: false, message: 'ID nhiệm vụ không hợp lệ.' });
+            return res.status(400).json({ success: false, message: 'ID nhiá»‡m vá»¥ khĂ´ng há»£p lá»‡.' });
         }
 
         if (!title) {
-            return res.status(400).json({ success: false, message: 'Tên subtask không được để trống.' });
+            return res.status(400).json({ success: false, message: 'TĂªn subtask khĂ´ng Ä‘Æ°á»£c Ä‘á»ƒ trá»‘ng.' });
         }
 
         const task = await getAccessibleTask(taskId, req.user.id);
         if (!task) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy nhiệm vụ hoặc bạn không có quyền sửa.' });
+            return res.status(404).json({ success: false, message: 'KhĂ´ng tĂ¬m tháº¥y nhiá»‡m vá»¥ hoáº·c báº¡n khĂ´ng cĂ³ quyá»n sá»­a.' });
         }
 
         if (!canWorkOnTask(task, req.user.id)) {
@@ -661,7 +772,7 @@ router.post('/:id/subtasks', async (req, res) => {
         }
 
         if (!(await tableExists(pool, 'task_subtasks'))) {
-            return res.status(501).json({ success: false, message: 'Database chưa có bảng task_subtasks.' });
+            return res.status(501).json({ success: false, message: 'Database chÆ°a cĂ³ báº£ng task_subtasks.' });
         }
 
         const [result] = await pool.query(
@@ -677,33 +788,33 @@ router.post('/:id/subtasks', async (req, res) => {
 
         return res.status(201).json({
             success: true,
-            message: 'Thêm subtask thành công.',
+            message: 'ThĂªm subtask thĂ nh cĂ´ng.',
             data: mapSubtask(rows[0])
         });
     } catch (err) {
-        console.error('Lỗi thêm subtask:', err);
+        console.error('Lá»—i thĂªm subtask:', err);
         return res.status(500).json({
             success: false,
-            message: 'Không thể thêm subtask.',
+            message: 'KhĂ´ng thá»ƒ thĂªm subtask.',
             error: err.message
         });
     }
 });
 
 // PATCH /api/task-detail/:id/subtasks/:subtaskId
-// Tick/bỏ tick hoặc đổi tên subtask.
+// Tick/bá» tick hoáº·c Ä‘á»•i tĂªn subtask.
 router.patch('/:id/subtasks/:subtaskId', async (req, res) => {
     try {
         const taskId = Number(req.params.id);
         const subtaskId = Number(req.params.subtaskId);
 
         if (!taskId || !subtaskId) {
-            return res.status(400).json({ success: false, message: 'ID subtask không hợp lệ.' });
+            return res.status(400).json({ success: false, message: 'ID subtask khĂ´ng há»£p lá»‡.' });
         }
 
         const task = await getAccessibleTask(taskId, req.user.id);
         if (!task) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy nhiệm vụ hoặc bạn không có quyền sửa.' });
+            return res.status(404).json({ success: false, message: 'KhĂ´ng tĂ¬m tháº¥y nhiá»‡m vá»¥ hoáº·c báº¡n khĂ´ng cĂ³ quyá»n sá»­a.' });
         }
 
         if (!canWorkOnTask(task, req.user.id)) {
@@ -723,14 +834,14 @@ router.patch('/:id/subtasks/:subtaskId', async (req, res) => {
         if (Object.prototype.hasOwnProperty.call(req.body, 'title')) {
             const title = String(req.body.title || '').trim();
             if (!title) {
-                return res.status(400).json({ success: false, message: 'Tên subtask không được để trống.' });
+                return res.status(400).json({ success: false, message: 'TĂªn subtask khĂ´ng Ä‘Æ°á»£c Ä‘á»ƒ trá»‘ng.' });
             }
             fields.push('title = ?');
             values.push(title);
         }
 
         if (fields.length === 0) {
-            return res.status(400).json({ success: false, message: 'Không có thông tin nào để cập nhật.' });
+            return res.status(400).json({ success: false, message: 'KhĂ´ng cĂ³ thĂ´ng tin nĂ o Ä‘á»ƒ cáº­p nháº­t.' });
         }
 
         values.push(subtaskId, taskId);
@@ -741,7 +852,7 @@ router.patch('/:id/subtasks/:subtaskId', async (req, res) => {
         );
 
         if (result.affectedRows === 0) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy subtask.' });
+            return res.status(404).json({ success: false, message: 'KhĂ´ng tĂ¬m tháº¥y subtask.' });
         }
 
         const [rows] = await pool.query(
@@ -752,14 +863,14 @@ router.patch('/:id/subtasks/:subtaskId', async (req, res) => {
 
         return res.json({
             success: true,
-            message: 'Cập nhật subtask thành công.',
+            message: 'Cáº­p nháº­t subtask thĂ nh cĂ´ng.',
             data: mapSubtask(rows[0])
         });
     } catch (err) {
-        console.error('Lỗi cập nhật subtask:', err);
+        console.error('Lá»—i cáº­p nháº­t subtask:', err);
         return res.status(500).json({
             success: false,
-            message: 'Không thể cập nhật subtask.',
+            message: 'KhĂ´ng thá»ƒ cáº­p nháº­t subtask.',
             error: err.message
         });
     }
@@ -772,12 +883,12 @@ router.delete('/:id/subtasks/:subtaskId', async (req, res) => {
         const subtaskId = Number(req.params.subtaskId);
 
         if (!taskId || !subtaskId) {
-            return res.status(400).json({ success: false, message: 'ID subtask không hợp lệ.' });
+            return res.status(400).json({ success: false, message: 'ID subtask khĂ´ng há»£p lá»‡.' });
         }
 
         const task = await getAccessibleTask(taskId, req.user.id);
         if (!task) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy nhiệm vụ hoặc bạn không có quyền sửa.' });
+            return res.status(404).json({ success: false, message: 'KhĂ´ng tĂ¬m tháº¥y nhiá»‡m vá»¥ hoáº·c báº¡n khĂ´ng cĂ³ quyá»n sá»­a.' });
         }
 
         if (!canWorkOnTask(task, req.user.id)) {
@@ -790,22 +901,22 @@ router.delete('/:id/subtasks/:subtaskId', async (req, res) => {
         );
 
         if (result.affectedRows === 0) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy subtask.' });
+            return res.status(404).json({ success: false, message: 'KhĂ´ng tĂ¬m tháº¥y subtask.' });
         }
 
-        return res.json({ success: true, message: 'Xóa subtask thành công.' });
+        return res.json({ success: true, message: 'XĂ³a subtask thĂ nh cĂ´ng.' });
     } catch (err) {
-        console.error('Lỗi xóa subtask:', err);
+        console.error('Lá»—i xĂ³a subtask:', err);
         return res.status(500).json({
             success: false,
-            message: 'Không thể xóa subtask.',
+            message: 'KhĂ´ng thá»ƒ xĂ³a subtask.',
             error: err.message
         });
     }
 });
 
 // POST /api/task-detail/:id/attachments
-// Lưu metadata file đính kèm. Upload file nhị phân nên xử lý ở endpoint upload riêng.
+// LÆ°u metadata file Ä‘Ă­nh kĂ¨m. Upload file nhá»‹ phĂ¢n nĂªn xá»­ lĂ½ á»Ÿ endpoint upload riĂªng.
 router.post('/:id/attachments', async (req, res) => {
     try {
         const taskId = Number(req.params.id);
@@ -819,16 +930,16 @@ router.post('/:id/attachments', async (req, res) => {
         const fileBase64 = req.body.file_base64 || req.body.base64;
 
         if (!taskId) {
-            return res.status(400).json({ success: false, message: 'ID nhiệm vụ không hợp lệ.' });
+            return res.status(400).json({ success: false, message: 'ID nhiá»‡m vá»¥ khĂ´ng há»£p lá»‡.' });
         }
 
         if (!fileName || (!fileUrl && !fileBase64)) {
-            return res.status(400).json({ success: false, message: 'Tên file và đường dẫn file không được để trống.' });
+            return res.status(400).json({ success: false, message: 'TĂªn file vĂ  Ä‘Æ°á»ng dáº«n file khĂ´ng Ä‘Æ°á»£c Ä‘á»ƒ trá»‘ng.' });
         }
 
         const task = await getAccessibleTask(taskId, req.user.id);
         if (!task) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy nhiệm vụ hoặc bạn không có quyền sửa.' });
+            return res.status(404).json({ success: false, message: 'KhĂ´ng tĂ¬m tháº¥y nhiá»‡m vá»¥ hoáº·c báº¡n khĂ´ng cĂ³ quyá»n sá»­a.' });
         }
 
         if (!canWorkOnTask(task, req.user.id)) {
@@ -836,7 +947,7 @@ router.post('/:id/attachments', async (req, res) => {
         }
 
         if (!(await tableExists(pool, 'task_attachments'))) {
-            return res.status(501).json({ success: false, message: 'Database chưa có bảng task_attachments.' });
+            return res.status(501).json({ success: false, message: 'Database chÆ°a cĂ³ báº£ng task_attachments.' });
         }
         await ensureTaskAttachmentScopeColumn(pool);
 
@@ -861,14 +972,14 @@ router.post('/:id/attachments', async (req, res) => {
         const attachments = await getAttachments(taskId);
         return res.status(201).json({
             success: true,
-            message: 'Thêm tài liệu đính kèm thành công.',
+            message: 'ThĂªm tĂ i liá»‡u Ä‘Ă­nh kĂ¨m thĂ nh cĂ´ng.',
             data: attachments.find((attachment) => Number(attachment.id) === Number(result.insertId)) || null
         });
     } catch (err) {
-        console.error('Lỗi thêm tài liệu đính kèm:', err);
+        console.error('Lá»—i thĂªm tĂ i liá»‡u Ä‘Ă­nh kĂ¨m:', err);
         return res.status(500).json({
             success: false,
-            message: 'Không thể thêm tài liệu đính kèm.',
+            message: 'KhĂ´ng thá»ƒ thĂªm tĂ i liá»‡u Ä‘Ă­nh kĂ¨m.',
             error: err.message
         });
     }
@@ -881,12 +992,12 @@ router.delete('/:id/attachments/:attachmentId', async (req, res) => {
         const attachmentId = Number(req.params.attachmentId);
 
         if (!taskId || !attachmentId) {
-            return res.status(400).json({ success: false, message: 'ID tài liệu không hợp lệ.' });
+            return res.status(400).json({ success: false, message: 'ID tĂ i liá»‡u khĂ´ng há»£p lá»‡.' });
         }
 
         const task = await getAccessibleTask(taskId, req.user.id);
         if (!task) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy nhiệm vụ hoặc bạn không có quyền sửa.' });
+            return res.status(404).json({ success: false, message: 'KhĂ´ng tĂ¬m tháº¥y nhiá»‡m vá»¥ hoáº·c báº¡n khĂ´ng cĂ³ quyá»n sá»­a.' });
         }
 
         if (!canWorkOnTask(task, req.user.id)) {
@@ -899,38 +1010,38 @@ router.delete('/:id/attachments/:attachmentId', async (req, res) => {
         );
 
         if (result.affectedRows === 0) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy tài liệu đính kèm.' });
+            return res.status(404).json({ success: false, message: 'KhĂ´ng tĂ¬m tháº¥y tĂ i liá»‡u Ä‘Ă­nh kĂ¨m.' });
         }
 
-        return res.json({ success: true, message: 'Xóa tài liệu đính kèm thành công.' });
+        return res.json({ success: true, message: 'XĂ³a tĂ i liá»‡u Ä‘Ă­nh kĂ¨m thĂ nh cĂ´ng.' });
     } catch (err) {
-        console.error('Lỗi xóa tài liệu đính kèm:', err);
+        console.error('Lá»—i xĂ³a tĂ i liá»‡u Ä‘Ă­nh kĂ¨m:', err);
         return res.status(500).json({
             success: false,
-            message: 'Không thể xóa tài liệu đính kèm.',
+            message: 'KhĂ´ng thá»ƒ xĂ³a tĂ i liá»‡u Ä‘Ă­nh kĂ¨m.',
             error: err.message
         });
     }
 });
 
 // POST /api/task-detail/:id/comments
-// Hoạt động khi database có bảng task_comments(id, task_id, user_id, content, created_at).
+// Hoáº¡t Ä‘á»™ng khi database cĂ³ báº£ng task_comments(id, task_id, user_id, content, created_at).
 router.post('/:id/comments', async (req, res) => {
     try {
         const taskId = Number(req.params.id);
         const content = String(req.body.content || '').trim();
 
         if (!taskId) {
-            return res.status(400).json({ success: false, message: 'ID nhiệm vụ không hợp lệ.' });
+            return res.status(400).json({ success: false, message: 'ID nhiá»‡m vá»¥ khĂ´ng há»£p lá»‡.' });
         }
 
         if (!content) {
-            return res.status(400).json({ success: false, message: 'Nội dung bình luận không được để trống.' });
+            return res.status(400).json({ success: false, message: 'Ná»™i dung bĂ¬nh luáº­n khĂ´ng Ä‘Æ°á»£c Ä‘á»ƒ trá»‘ng.' });
         }
 
         const task = await getAccessibleTask(taskId, req.user.id);
         if (!task) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy nhiệm vụ hoặc bạn không có quyền bình luận.' });
+            return res.status(404).json({ success: false, message: 'KhĂ´ng tĂ¬m tháº¥y nhiá»‡m vá»¥ hoáº·c báº¡n khĂ´ng cĂ³ quyá»n bĂ¬nh luáº­n.' });
         }
 
         await ensureTaskCommentsTable(pool);
@@ -952,21 +1063,21 @@ router.post('/:id/comments', async (req, res) => {
 
         return res.status(201).json({
             success: true,
-            message: 'Thêm bình luận thành công.',
+            message: 'ThĂªm bĂ¬nh luáº­n thĂ nh cĂ´ng.',
             data: mapComment(rows[0], req.user.id)
         });
     } catch (err) {
-        console.error('Lỗi thêm bình luận:', err);
+        console.error('Lá»—i thĂªm bĂ¬nh luáº­n:', err);
         return res.status(500).json({
             success: false,
-            message: 'Không thể thêm bình luận.',
+            message: 'KhĂ´ng thá»ƒ thĂªm bĂ¬nh luáº­n.',
             error: err.message
         });
     }
 });
 
 // PATCH /api/task-detail/:id/comments/:commentId
-// Chỉ người tạo bình luận mới được sửa nội dung bình luận của mình.
+// Chá»‰ ngÆ°á»i táº¡o bĂ¬nh luáº­n má»›i Ä‘Æ°á»£c sá»­a ná»™i dung bĂ¬nh luáº­n cá»§a mĂ¬nh.
 router.patch('/:id/comments/:commentId', async (req, res) => {
     try {
         const taskId = Number(req.params.id);
@@ -974,16 +1085,16 @@ router.patch('/:id/comments/:commentId', async (req, res) => {
         const content = String(req.body.content || '').trim();
 
         if (!taskId || !commentId) {
-            return res.status(400).json({ success: false, message: 'ID bình luận không hợp lệ.' });
+            return res.status(400).json({ success: false, message: 'ID bĂ¬nh luáº­n khĂ´ng há»£p lá»‡.' });
         }
 
         if (!content) {
-            return res.status(400).json({ success: false, message: 'Nội dung bình luận không được để trống.' });
+            return res.status(400).json({ success: false, message: 'Ná»™i dung bĂ¬nh luáº­n khĂ´ng Ä‘Æ°á»£c Ä‘á»ƒ trá»‘ng.' });
         }
 
         const task = await getAccessibleTask(taskId, req.user.id);
         if (!task) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy nhiệm vụ hoặc bạn không có quyền xem.' });
+            return res.status(404).json({ success: false, message: 'KhĂ´ng tĂ¬m tháº¥y nhiá»‡m vá»¥ hoáº·c báº¡n khĂ´ng cĂ³ quyá»n xem.' });
         }
 
         await ensureTaskCommentsTable(pool);
@@ -994,7 +1105,7 @@ router.patch('/:id/comments/:commentId', async (req, res) => {
         );
 
         if (result.affectedRows === 0) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy bình luận của bạn.' });
+            return res.status(404).json({ success: false, message: 'KhĂ´ng tĂ¬m tháº¥y bĂ¬nh luáº­n cá»§a báº¡n.' });
         }
 
         const [rows] = await pool.query(
@@ -1009,33 +1120,33 @@ router.patch('/:id/comments/:commentId', async (req, res) => {
 
         return res.json({
             success: true,
-            message: 'Cập nhật bình luận thành công.',
+            message: 'Cáº­p nháº­t bĂ¬nh luáº­n thĂ nh cĂ´ng.',
             data: mapComment(rows[0], req.user.id)
         });
     } catch (err) {
-        console.error('Lỗi cập nhật bình luận:', err);
+        console.error('Lá»—i cáº­p nháº­t bĂ¬nh luáº­n:', err);
         return res.status(500).json({
             success: false,
-            message: 'Không thể cập nhật bình luận.',
+            message: 'KhĂ´ng thá»ƒ cáº­p nháº­t bĂ¬nh luáº­n.',
             error: err.message
         });
     }
 });
 
 // DELETE /api/task-detail/:id/comments/:commentId
-// Chỉ người tạo bình luận mới được xóa bình luận của mình.
+// Chá»‰ ngÆ°á»i táº¡o bĂ¬nh luáº­n má»›i Ä‘Æ°á»£c xĂ³a bĂ¬nh luáº­n cá»§a mĂ¬nh.
 router.delete('/:id/comments/:commentId', async (req, res) => {
     try {
         const taskId = Number(req.params.id);
         const commentId = Number(req.params.commentId);
 
         if (!taskId || !commentId) {
-            return res.status(400).json({ success: false, message: 'ID bình luận không hợp lệ.' });
+            return res.status(400).json({ success: false, message: 'ID bĂ¬nh luáº­n khĂ´ng há»£p lá»‡.' });
         }
 
         const task = await getAccessibleTask(taskId, req.user.id);
         if (!task) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy nhiệm vụ hoặc bạn không có quyền xem.' });
+            return res.status(404).json({ success: false, message: 'KhĂ´ng tĂ¬m tháº¥y nhiá»‡m vá»¥ hoáº·c báº¡n khĂ´ng cĂ³ quyá»n xem.' });
         }
 
         await ensureTaskCommentsTable(pool);
@@ -1046,18 +1157,19 @@ router.delete('/:id/comments/:commentId', async (req, res) => {
         );
 
         if (result.affectedRows === 0) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy bình luận của bạn.' });
+            return res.status(404).json({ success: false, message: 'KhĂ´ng tĂ¬m tháº¥y bĂ¬nh luáº­n cá»§a báº¡n.' });
         }
 
-        return res.json({ success: true, message: 'Xóa bình luận thành công.' });
+        return res.json({ success: true, message: 'XĂ³a bĂ¬nh luáº­n thĂ nh cĂ´ng.' });
     } catch (err) {
-        console.error('Lỗi xóa bình luận:', err);
+        console.error('Lá»—i xĂ³a bĂ¬nh luáº­n:', err);
         return res.status(500).json({
             success: false,
-            message: 'Không thể xóa bình luận.',
+            message: 'KhĂ´ng thá»ƒ xĂ³a bĂ¬nh luáº­n.',
             error: err.message
         });
     }
 });
 
 module.exports = router;
+

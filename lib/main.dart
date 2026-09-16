@@ -14,7 +14,10 @@ import 'register_screen.dart';
 import 'reset_password_screen.dart';
 import 'reset_otp_screen.dart';
 import 'services/auth_service.dart';
+import 'services/push_notification_service.dart';
 import 'widgets/app_bottom_navigation.dart';
+
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,6 +25,7 @@ Future<void> main() async {
   await appThemeController.load();
   final initialRoute = await AuthService.shouldAutoLogin() ? '/home' : '/login';
   runApp(MyApp(initialRoute: initialRoute));
+  PushNotificationService.instance.initialize();
 }
 
 class MyApp extends StatelessWidget {
@@ -35,6 +39,7 @@ class MyApp extends StatelessWidget {
       animation: appThemeController,
       builder: (context, _) {
         return MaterialApp(
+          navigatorKey: rootNavigatorKey,
           title: 'Quản lý dự án',
           theme: appThemeController.themeData,
           initialRoute: initialRoute,

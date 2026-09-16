@@ -1,6 +1,7 @@
-const express = require('express');
+﻿const express = require('express');
 const mysql = require('mysql2/promise');
 const jwt = require('jsonwebtoken');
+const { sendPushToUser } = require('../services/pushService');
 
 const router = express.Router();
 
@@ -29,7 +30,7 @@ function requireAuth(req, res, next) {
         if (!token) {
             return res.status(401).json({
                 success: false,
-                message: 'Bạn chưa đăng nhập.'
+                message: 'Báº¡n chÆ°a Ä‘Äƒng nháº­p.'
             });
         }
 
@@ -38,7 +39,7 @@ function requireAuth(req, res, next) {
     } catch (err) {
         return res.status(401).json({
             success: false,
-            message: 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn.'
+            message: 'PhiĂªn Ä‘Äƒng nháº­p khĂ´ng há»£p lá»‡ hoáº·c Ä‘Ă£ háº¿t háº¡n.'
         });
     }
 }
@@ -115,7 +116,7 @@ router.get('/', async (req, res) => {
         console.error('Friends list error:', err);
         return res.status(500).json({
             success: false,
-            message: 'Không thể tải danh sách bạn bè. Kiểm tra bảng friendships đã được tạo chưa.'
+            message: 'KhĂ´ng thá»ƒ táº£i danh sĂ¡ch báº¡n bĂ¨. Kiá»ƒm tra báº£ng friendships Ä‘Ă£ Ä‘Æ°á»£c táº¡o chÆ°a.'
         });
     }
 });
@@ -131,7 +132,7 @@ router.post('/requests', async (req, res) => {
         if (!email) {
             return res.status(400).json({
                 success: false,
-                message: 'Vui lòng nhập email người bạn muốn kết bạn.'
+                message: 'Vui lĂ²ng nháº­p email ngÆ°á»i báº¡n muá»‘n káº¿t báº¡n.'
             });
         }
 
@@ -143,14 +144,14 @@ router.post('/requests', async (req, res) => {
         if (!addressee) {
             return res.status(404).json({
                 success: false,
-                message: 'Không tìm thấy người dùng với email này.'
+                message: 'KhĂ´ng tĂ¬m tháº¥y ngÆ°á»i dĂ¹ng vá»›i email nĂ y.'
             });
         }
 
         if (Number(addressee.id) === Number(requesterId)) {
             return res.status(400).json({
                 success: false,
-                message: 'Bạn không thể gửi lời mời kết bạn cho chính mình.'
+                message: 'Báº¡n khĂ´ng thá»ƒ gá»­i lá»i má»i káº¿t báº¡n cho chĂ­nh mĂ¬nh.'
             });
         }
 
@@ -172,7 +173,7 @@ router.post('/requests', async (req, res) => {
                 await connection.rollback();
                 return res.status(409).json({
                     success: false,
-                    message: 'Hai bạn đã là bạn bè.'
+                    message: 'Hai báº¡n Ä‘Ă£ lĂ  báº¡n bĂ¨.'
                 });
             }
 
@@ -180,7 +181,7 @@ router.post('/requests', async (req, res) => {
                 await connection.rollback();
                 return res.status(409).json({
                     success: false,
-                    message: 'Lời mời kết bạn đang chờ phản hồi.'
+                    message: 'Lá»i má»i káº¿t báº¡n Ä‘ang chá» pháº£n há»“i.'
                 });
             }
 
@@ -202,20 +203,26 @@ router.post('/requests', async (req, res) => {
             );
         }
 
+        const notificationContent = 'Bạn có một lời mời kết bạn mới.';
         await connection.query(
             `INSERT INTO notifications (user_id, type, content, data)
              VALUES (?, 'friend_request', ?, JSON_OBJECT('requester_id', ?))`,
             [
                 addressee.id,
-                'Bạn có một lời mời kết bạn mới.',
+                notificationContent,
                 requesterId
             ]
         );
+        sendPushToUser(addressee.id, {
+            title: 'Lời mời kết bạn',
+            body: notificationContent,
+            data: { type: 'friend_request', requester_id: requesterId }
+        }).catch((err) => console.warn('Khong the gui push notification:', err.message));
 
         await connection.commit();
         return res.status(201).json({
             success: true,
-            message: 'Đã gửi lời mời kết bạn.',
+            message: 'ÄĂ£ gá»­i lá»i má»i káº¿t báº¡n.',
             data: {
                 user_id: addressee.id,
                 name: addressee.name,
@@ -227,7 +234,7 @@ router.post('/requests', async (req, res) => {
         console.error('Send friend request error:', err);
         return res.status(500).json({
             success: false,
-            message: 'Không thể gửi lời mời kết bạn.'
+            message: 'KhĂ´ng thá»ƒ gá»­i lá»i má»i káº¿t báº¡n.'
         });
     } finally {
         connection.release();
@@ -256,7 +263,7 @@ router.get('/requests/incoming', async (req, res) => {
         console.error('Incoming friend requests error:', err);
         return res.status(500).json({
             success: false,
-            message: 'Không thể tải lời mời kết bạn.'
+            message: 'KhĂ´ng thá»ƒ táº£i lá»i má»i káº¿t báº¡n.'
         });
     }
 });
@@ -274,19 +281,19 @@ router.patch('/requests/:id/accept', async (req, res) => {
         if (result.affectedRows === 0) {
             return res.status(404).json({
                 success: false,
-                message: 'Không tìm thấy lời mời cần chấp nhận.'
+                message: 'KhĂ´ng tĂ¬m tháº¥y lá»i má»i cáº§n cháº¥p nháº­n.'
             });
         }
 
         return res.json({
             success: true,
-            message: 'Đã chấp nhận lời mời kết bạn.'
+            message: 'ÄĂ£ cháº¥p nháº­n lá»i má»i káº¿t báº¡n.'
         });
     } catch (err) {
         console.error('Accept friend request error:', err);
         return res.status(500).json({
             success: false,
-            message: 'Không thể chấp nhận lời mời kết bạn.'
+            message: 'KhĂ´ng thá»ƒ cháº¥p nháº­n lá»i má»i káº¿t báº¡n.'
         });
     }
 });
@@ -304,19 +311,19 @@ router.patch('/requests/:id/reject', async (req, res) => {
         if (result.affectedRows === 0) {
             return res.status(404).json({
                 success: false,
-                message: 'Không tìm thấy lời mời cần từ chối.'
+                message: 'KhĂ´ng tĂ¬m tháº¥y lá»i má»i cáº§n tá»« chá»‘i.'
             });
         }
 
         return res.json({
             success: true,
-            message: 'Đã từ chối lời mời kết bạn.'
+            message: 'ÄĂ£ tá»« chá»‘i lá»i má»i káº¿t báº¡n.'
         });
     } catch (err) {
         console.error('Reject friend request error:', err);
         return res.status(500).json({
             success: false,
-            message: 'Không thể từ chối lời mời kết bạn.'
+            message: 'KhĂ´ng thá»ƒ tá»« chá»‘i lá»i má»i káº¿t báº¡n.'
         });
     }
 });

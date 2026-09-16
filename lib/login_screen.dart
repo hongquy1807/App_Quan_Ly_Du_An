@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_theme_controller.dart';
 import 'services/auth_service.dart';
+import 'services/push_notification_service.dart';
 
 enum LoginLanguage { vietnamese, english, chinese }
 
@@ -100,6 +101,7 @@ class _LoginScreenState extends State<LoginScreen> {
         password: _passwordController.text,
         rememberLogin: _rememberMe,
       );
+      await PushNotificationService.instance.registerCurrentDevice();
 
       if (!mounted) return;
       setState(() {

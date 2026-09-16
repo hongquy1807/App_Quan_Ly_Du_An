@@ -1,6 +1,11 @@
 const express = require('express');
 const mysql = require('mysql2/promise');
 const jwt = require('jsonwebtoken');
+const {
+    registerPushToken,
+    unregisterPushToken,
+    sendPushToUser
+} = require('../services/pushService');
 
 const router = express.Router();
 
@@ -46,6 +51,22 @@ function requireAuth(req, res, next) {
 
 function toBool(value) {
     return Number(value) === 1 || value === true;
+}
+
+async function ensureTaskAssigneesTable(connection = pool) {
+    await connection.query(
+        `CREATE TABLE IF NOT EXISTS task_assignees (
+            task_id INT NOT NULL,
+            user_id INT NOT NULL,
+            assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (task_id, user_id),
+            KEY task_assignees_user_idx (user_id),
+            CONSTRAINT task_assignees_notifications_task_fk
+                FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+            CONSTRAINT task_assignees_notifications_user_fk
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+    );
 }
 
 function safeJson(value) {
@@ -126,6 +147,7 @@ function mapNotification(row) {
 }
 
 async function createDeadlineReminders(userId) {
+    await ensureTaskAssigneesTable(pool);
     const placeholders = DEADLINE_REMINDER_DAYS.map(() => '?').join(', ');
     const [tasks] = await pool.query(
         `SELECT DISTINCT
@@ -140,11 +162,19 @@ async function createDeadlineReminders(userId) {
          INNER JOIN project_members pm ON pm.project_id = t.project_id
          WHERE pm.user_id = ?
            AND p.status <> 'completed'
-           AND (t.assignee_id = ? OR t.assignee_id IS NULL)
+           AND (
+                t.assignee_id = ?
+                OR t.assignee_id IS NULL
+                OR EXISTS (
+                    SELECT 1
+                    FROM task_assignees ta
+                    WHERE ta.task_id = t.id AND ta.user_id = ?
+                )
+           )
            AND COALESCE(t.status, 'todo') <> 'done'
            AND t.due_date IS NOT NULL
            AND DATEDIFF(t.due_date, CURDATE()) IN (${placeholders})`,
-        [userId, userId, ...DEADLINE_REMINDER_DAYS]
+        [userId, userId, userId, ...DEADLINE_REMINDER_DAYS]
     );
 
     for (const task of tasks) {
@@ -298,6 +328,69 @@ router.patch('/mark-all-read', async (req, res) => {
     }
 });
 
+router.post('/push-token', async (req, res) => {
+    try {
+        const token = String(req.body.token || '').trim();
+        if (!token) {
+            return res.status(400).json({
+                success: false,
+                message: 'Thieu token thiet bi.'
+            });
+        }
+
+        await registerPushToken({
+            userId: req.user.id,
+            token,
+            platform: req.body.platform,
+            deviceId: req.body.device_id || req.body.deviceId
+        });
+
+        return res.json({ success: true });
+    } catch (err) {
+        console.error('Loi luu push token:', err);
+        return res.status(500).json({
+            success: false,
+            message: 'Khong the luu token thong bao day.',
+            error: err.message
+        });
+    }
+});
+
+router.delete('/push-token', async (req, res) => {
+    try {
+        await unregisterPushToken({
+            userId: req.user.id,
+            token: req.body.token
+        });
+        return res.json({ success: true });
+    } catch (err) {
+        console.error('Loi xoa push token:', err);
+        return res.status(500).json({
+            success: false,
+            message: 'Khong the xoa token thong bao day.',
+            error: err.message
+        });
+    }
+});
+
+router.post('/test-push', async (req, res) => {
+    try {
+        const result = await sendPushToUser(req.user.id, {
+            title: 'Quản lý dự án',
+            body: 'Đây là thông báo đẩy thử nghiệm.',
+            data: { type: 'test_push' }
+        });
+        return res.json({ success: true, data: result });
+    } catch (err) {
+        console.error('Loi test push:', err);
+        return res.status(500).json({
+            success: false,
+            message: 'Khong the gui test push.',
+            error: err.message
+        });
+    }
+});
+
 router.get('/:id', async (req, res) => {
     try {
         const userId = req.user.id;
@@ -356,6 +449,16 @@ router.post('/', async (req, res) => {
             'INSERT INTO notifications (user_id, type, content, data, `read`) VALUES (?, ?, ?, ?, 0)',
             [user_id, type, content, data ? JSON.stringify(data) : null]
         );
+
+        sendPushToUser(user_id, {
+            title: notificationTitle(type, data || {}),
+            body: content,
+            data: {
+                notification_id: result.insertId,
+                type,
+                ...(data || {})
+            }
+        }).catch((err) => console.warn('Khong the gui push notification:', err.message));
 
         return res.status(201).json({
             success: true,

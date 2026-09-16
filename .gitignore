@@ -1,4 +1,4 @@
-# Miscellaneous
+﻿# Miscellaneous
 *.class
 *.log
 *.pyc
@@ -46,3 +46,15 @@ be/.env
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Node dependencies
+be/node_modules/
+
+# Runtime uploads
+be/upload/
+
+# Firebase Admin private key
+be/firebase-service-account.json
+
+# Local duplicate database export
+Database/quanlyduan (1).sql
